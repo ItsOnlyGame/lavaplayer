@@ -29,7 +29,6 @@ public class BotControllerManager {
 
     for (Method method : controllerClass.getDeclaredMethods()) {
       BotCommandHandler annotation = method.getAnnotation(BotCommandHandler.class);
-
       if (annotation != null) {
         registerControllerMethod(controllerClass, method, annotation);
       }
@@ -53,6 +52,7 @@ public class BotControllerManager {
     }
 
     Command command = new Command(commandName, usage, parameters, controllerClass, method);
+    System.out.println(command.name);
     commands.put(command.name, command);
   }
 

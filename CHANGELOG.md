@@ -1,5 +1,17 @@
 # Change Log
 
+## [1.3.74] -- 2021-03-07 -- Fork
+### Added
+- Added spotify as a new source
+- Added lyrics fetching from genius.com
+- Added artwork support for both tracks and playlists
+- Added playlist urls to playlist object
+### Changed
+- Gradle updated to version 6.3
+### Removed
+- Removed publishing from the project
+- Removed bandcamp, beam, getyarn, nico and vimeo from sources
+
 ## [1.3.73] -- 2021-03-07
 ### Fixed
 - Fix for YouTube playlists with pagination not loading (PR #592 by Walkyst)

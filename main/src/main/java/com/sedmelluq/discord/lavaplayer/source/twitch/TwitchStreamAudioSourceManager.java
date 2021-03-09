@@ -114,7 +114,8 @@ public class TwitchStreamAudioSourceManager implements AudioSourceManager, HttpC
               Units.DURATION_MS_UNKNOWN,
               reference.identifier,
               true,
-              reference.identifier
+              reference.identifier,
+              channelData.get("logo").text()
       ), this);
     }
   }

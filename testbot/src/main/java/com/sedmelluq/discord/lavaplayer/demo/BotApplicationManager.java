@@ -1,5 +1,6 @@
 package com.sedmelluq.discord.lavaplayer.demo;
 
+import com.neovisionaries.i18n.CountryCode;
 import com.sedmelluq.discord.lavaplayer.demo.controller.BotCommandMappingHandler;
 import com.sedmelluq.discord.lavaplayer.demo.controller.BotController;
 import com.sedmelluq.discord.lavaplayer.demo.controller.BotControllerManager;
@@ -7,13 +8,11 @@ import com.sedmelluq.discord.lavaplayer.demo.music.MusicController;
 import com.sedmelluq.discord.lavaplayer.player.AudioConfiguration;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
-import com.sedmelluq.discord.lavaplayer.source.bandcamp.BandcampAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.beam.BeamAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.local.LocalAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.source.spotify.SpotifyAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager;
 import com.sedmelluq.lava.common.tools.DaemonThreadFactory;
 import net.dv8tion.jda.api.entities.ChannelType;
@@ -49,13 +48,12 @@ public class BotApplicationManager extends ListenerAdapter {
     //playerManager.useRemoteNodes("localhost:8080");
     playerManager.getConfiguration().setResamplingQuality(AudioConfiguration.ResamplingQuality.LOW);
     playerManager.registerSourceManager(new YoutubeAudioSourceManager());
+    //playerManager.registerSourceManager(new SpotifyAudioSourceManager("id", "secret", "CountryCode"));
     playerManager.registerSourceManager(SoundCloudAudioSourceManager.createDefault());
-    playerManager.registerSourceManager(new BandcampAudioSourceManager());
-    playerManager.registerSourceManager(new VimeoAudioSourceManager());
     playerManager.registerSourceManager(new TwitchStreamAudioSourceManager());
-    playerManager.registerSourceManager(new BeamAudioSourceManager());
     playerManager.registerSourceManager(new HttpAudioSourceManager());
     playerManager.registerSourceManager(new LocalAudioSourceManager());
+
 
     executorService = Executors.newScheduledThreadPool(1, new DaemonThreadFactory("bot"));
   }
@@ -100,7 +98,7 @@ public class BotApplicationManager extends ListenerAdapter {
 
     BotGuildContext guildContext = getContext(event.getGuild());
 
-    controllerManager.dispatchMessage(guildContext.controllers, "!/", event.getMessage(), new BotCommandMappingHandler() {
+    controllerManager.dispatchMessage(guildContext.controllers, "r!", event.getMessage(), new BotCommandMappingHandler() {
       @Override
       public void commandNotFound(Message message, String name) {
 

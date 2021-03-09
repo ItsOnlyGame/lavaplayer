@@ -10,6 +10,8 @@ public class BasicAudioPlaylist implements AudioPlaylist {
   private final List<AudioTrack> tracks;
   private final AudioTrack selectedTrack;
   private final boolean isSearchResult;
+  private final String playlistUrl;
+  private final String artworkUrl;
 
   /**
    * @param name Name of the playlist
@@ -17,11 +19,13 @@ public class BasicAudioPlaylist implements AudioPlaylist {
    * @param selectedTrack Track that is explicitly selected
    * @param isSearchResult True if the playlist was created from search results
    */
-  public BasicAudioPlaylist(String name, List<AudioTrack> tracks, AudioTrack selectedTrack, boolean isSearchResult) {
+  public BasicAudioPlaylist(String name, List<AudioTrack> tracks, AudioTrack selectedTrack, boolean isSearchResult, String playlistUrl, String artworkUrl) {
     this.name = name;
     this.tracks = tracks;
     this.selectedTrack = selectedTrack;
     this.isSearchResult = isSearchResult;
+    this.playlistUrl = playlistUrl;
+    this.artworkUrl = artworkUrl;
   }
 
   @Override
@@ -42,5 +46,15 @@ public class BasicAudioPlaylist implements AudioPlaylist {
   @Override
   public boolean isSearchResult() {
     return isSearchResult;
+  }
+
+  @Override
+  public String getPlaylistUrl() {
+    return playlistUrl;
+  }
+
+  @Override
+  public String getArtwork() {
+    return artworkUrl;
   }
 }

@@ -25,4 +25,14 @@ public interface AudioPlaylist extends AudioItem {
    * @return True if the playlist was created from search results.
    */
   boolean isSearchResult();
+
+  /**
+   * @return Playlist Url
+   */
+  String getPlaylistUrl();
+
+  /**
+   * @return Playlist artwork url, if it exists.
+   */
+  String getArtwork();
 }

@@ -1,6 +1,5 @@
 plugins {
   id 'java'
-  id 'com.jfrog.bintray'
   id 'maven-publish'
 }
 
@@ -12,27 +11,10 @@ repositories {
 }
 
 dependencies {
-  compile project(':main')
+  implementation project(':main')
   implementation 'com.github.micromod:ibxm:a73'
 }
 
 task sourceJar(type: Jar) {
   from sourceSets.main.allJava
 }
-
-publishing {
-  publications {
-    mavenJava(MavenPublication) {
-      groupId rootProject.group
-      artifactId moduleName
-
-      from components.java
-
-      artifact sourceJar {
-        classifier 'sources'
-      }
-    }
-  }
-}
-
-apply from: "${rootDir}/gradle/bintray.gradle"

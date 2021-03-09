@@ -7,9 +7,9 @@ plugins {
 version = '1.2.50'
 
 dependencies {
-  compile project(':main')
+  implementation project(':main')
 
-  compile 'org.springframework.boot:spring-boot-starter-web:2.1.2.RELEASE'
+  implementation 'org.springframework.boot:spring-boot-starter-web:2.1.2.RELEASE'
 }
 
 bootJar {

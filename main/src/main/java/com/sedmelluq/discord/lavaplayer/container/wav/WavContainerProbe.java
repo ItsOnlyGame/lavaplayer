@@ -50,7 +50,8 @@ public class WavContainerProbe implements MediaContainerProbe {
         fileInfo.getDuration(),
         reference.identifier,
         false,
-        reference.identifier
+        reference.identifier,
+            null
     ));
   }
 
