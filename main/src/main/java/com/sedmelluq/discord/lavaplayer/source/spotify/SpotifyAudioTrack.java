@@ -49,7 +49,17 @@ public class SpotifyAudioTrack extends DelegatedAudioTrack {
         setRealTrack();
 
         if (this.realTrack != null) {
-            this.processDelegate(realTrack, executor);
+            try {
+                this.processDelegate(realTrack, executor);
+            } catch (Exception err) {
+                if (err.getMessage().equals("This video cannot be viewed anonymously.")) {
+                    nextSearch();
+                    process(executor);
+                } else {
+                    throw err;
+                }
+            }
+
         } else {
             throw new Exception("Couldn't find a track on YouTube.");
         }
@@ -156,6 +166,7 @@ public class SpotifyAudioTrack extends DelegatedAudioTrack {
 
     public void nextSearch() {
         this.searchIndex++;
+        this.realTrack = null;
     }
 
 }

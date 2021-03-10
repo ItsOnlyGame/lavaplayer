@@ -3,6 +3,7 @@ package com.sedmelluq.discord.lavaplayer.demo.music;
 import com.sedmelluq.discord.lavaplayer.demo.MessageDispatcher;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason;
 
@@ -91,6 +92,12 @@ public class MusicScheduler extends AudioEventAdapter implements Runnable {
     messageDispatcher.sendMessage(String.format("Track %s got stuck, skipping.", track.getInfo().title));
 
     startNextTrack(false);
+  }
+
+  @Override
+  public void onTrackException(AudioPlayer player, AudioTrack track, FriendlyException exception) {
+    super.onTrackException(player, track, exception);
+    exception.printStackTrace();
   }
 
   @Override

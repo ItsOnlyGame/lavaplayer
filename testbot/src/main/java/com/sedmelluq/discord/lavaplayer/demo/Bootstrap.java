@@ -5,7 +5,7 @@ import net.dv8tion.jda.api.JDABuilder;
 public class Bootstrap {
   public static void main(String[] args) throws Exception {
     new JDABuilder()
-        .setToken(System.getProperty("botToken"))
+        .setToken(System.getenv("botToken"))
         .addEventListeners(new BotApplicationManager())
         .build();
   }

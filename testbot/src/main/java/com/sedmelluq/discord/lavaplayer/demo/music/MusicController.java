@@ -330,8 +330,6 @@ public class MusicController implements BotController {
 
                 message.getChannel().sendMessage("Starting now: " + track.getInfo().title + " (length " + track.getDuration() + ")").queue();
 
-                System.out.println(track.getInfo().artwork);
-
                 if (now) {
                     scheduler.playNow(track, true);
                 } else {
@@ -353,11 +351,6 @@ public class MusicController implements BotController {
                 } else {
                     selected = tracks.get(0);
                     message.getChannel().sendMessage("Added first track from playlist: " + selected.getInfo().title).queue();
-                }
-
-                System.out.println(playlist.getArtwork());
-                for (AudioTrack temp : playlist.getTracks()) {
-                    System.out.println(temp.getInfo().artwork);
                 }
 
                 if (now) {

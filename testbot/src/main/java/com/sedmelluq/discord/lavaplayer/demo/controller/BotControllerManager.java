@@ -52,7 +52,6 @@ public class BotControllerManager {
     }
 
     Command command = new Command(commandName, usage, parameters, controllerClass, method);
-    System.out.println(command.name);
     commands.put(command.name, command);
   }
 

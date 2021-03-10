@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.3.75] -- 2021-03-07 -- Fork
+### Fixed
+- Spotify tracks no longer output "This video cannot be viewed anonymously." error
+
+
 ## [1.3.74] -- 2021-03-07 -- Fork
 ### Added
 - Added spotify as a new source

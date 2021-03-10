@@ -48,7 +48,8 @@ public class BotApplicationManager extends ListenerAdapter {
     //playerManager.useRemoteNodes("localhost:8080");
     playerManager.getConfiguration().setResamplingQuality(AudioConfiguration.ResamplingQuality.LOW);
     playerManager.registerSourceManager(new YoutubeAudioSourceManager());
-    //playerManager.registerSourceManager(new SpotifyAudioSourceManager("id", "secret", "CountryCode"));
+    String spToken = System.getenv("spotifyToken");
+    playerManager.registerSourceManager(new SpotifyAudioSourceManager(spToken.split(":")[0], spToken.split(":")[1], CountryCode.EU));
     playerManager.registerSourceManager(SoundCloudAudioSourceManager.createDefault());
     playerManager.registerSourceManager(new TwitchStreamAudioSourceManager());
     playerManager.registerSourceManager(new HttpAudioSourceManager());
