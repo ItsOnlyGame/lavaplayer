@@ -29,7 +29,7 @@ import java.util.concurrent.CompletionException;
 public class SpotifyAudioSourceManager implements AudioSourceManager {
     private static final String SEARCH_PREFIX = "spsearch:";
 
-    private static final Logger log = LoggerFactory.getLogger(SpotifyAudioSourceManager.class);
+    private static final Logger logger = LoggerFactory.getLogger(SpotifyAudioSourceManager.class);
     public static final String SPOTIFY_DOMAIN = "open.spotify.com";
 
     private static final String SPOTIFY_TRACK_REGEX = "(?:http://|https://|)(?:www.|)open.spotify.com/track/(.*)";
@@ -50,6 +50,8 @@ public class SpotifyAudioSourceManager implements AudioSourceManager {
 
     private final SpotifySeveralTrackLoader severalTrackHandler;
     private final ClientCredentialsRequest clientCredentialsRequest;
+
+    private ClientCredentials currentClientCredentials;
 
     public SpotifyAudioSourceManager(String clientId, String clientSecret, CountryCode countryCode) {
         this.spotifyApi = new SpotifyApi.Builder()
@@ -89,6 +91,10 @@ public class SpotifyAudioSourceManager implements AudioSourceManager {
     @Override
     public AudioItem loadItem(AudioPlayerManager manager, AudioReference reference) {
         try {
+
+            loadClientCredentials();
+
+
             if (reference.identifier.startsWith(SEARCH_PREFIX)) {
                 return searchHandle.handle(reference.identifier.split(":")[1], audioTrackFactory, this, spotifyApi);
             }
@@ -113,7 +119,11 @@ public class SpotifyAudioSourceManager implements AudioSourceManager {
         } catch (Exception e) {
             e.printStackTrace();
             return null;
+        } finally {
+            spotifyApi.setAccessToken(null);
+            System.out.println(spotifyApi.getAccessToken());
         }
+
     }
 
     public AudioPlaylist getSeveralTracks(List<String> ids) {
@@ -137,23 +147,19 @@ public class SpotifyAudioSourceManager implements AudioSourceManager {
     }
 
     @Override
-    public void shutdown() {}
+    public void shutdown() {
+        spotifyApi.setAccessToken(null);
+    }
 
 
     private void loadClientCredentials() {
-        try {
-            final CompletableFuture<ClientCredentials> clientCredentialsFuture = clientCredentialsRequest.executeAsync();
+        final CompletableFuture<ClientCredentials> clientCredentialsFuture = clientCredentialsRequest.executeAsync();
 
-            clientCredentialsFuture.thenAccept((clientCredentials -> {
-                spotifyApi.setAccessToken(clientCredentials.getAccessToken());
-                System.out.println("Expires in: " + clientCredentials.getExpiresIn());
-            }));
-
-        } catch (CompletionException e) {
-            System.out.println("Error: " + e.getCause().getMessage());
-        } catch (CancellationException e) {
-            System.out.println("Async operation cancelled.");
-        }
+        clientCredentialsFuture.thenAccept((clientCredentials -> {
+            currentClientCredentials = clientCredentials;
+            spotifyApi.setAccessToken(clientCredentials.getAccessToken());
+            logger.info("Expires in: " + clientCredentials.getExpiresIn() + "s");
+        }));
     }
 
     public CountryCode getCountryCode() {

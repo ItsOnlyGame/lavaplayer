@@ -1,9 +1,13 @@
 # Change Log
 
-## [1.3.75] -- 2021-03-07 -- Fork
+
+## [1.3.76] -- 2021-03-4/ -- Fork
+### Fixed
+- Spotify's authentication should work after the original token expires
+
+## [1.3.75] -- 2021-03-08 -- Fork
 ### Fixed
 - Spotify tracks no longer output "This video cannot be viewed anonymously." error
-
 
 ## [1.3.74] -- 2021-03-07 -- Fork
 ### Added

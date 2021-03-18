@@ -138,11 +138,7 @@ public class SpotifyAudioTrack extends DelegatedAudioTrack {
 
     private YoutubeAudioTrack getTrack() {
         String query = this.initialAudioTrackInfo.author+" "+this.initialAudioTrackInfo.title;
-
-        AudioItem audioItem = ytSearchMusicProvider.loadSearchMusicResult(query, this::buildTrackFromInfo);
-        if (audioItem == AudioReference.NO_TRACK) {
-            audioItem = ytSearchProvider.loadSearchResult(query, this::buildTrackFromInfo);
-        }
+        AudioItem audioItem = ytSearchProvider.loadSearchResult(query, this::buildTrackFromInfo);
 
         if (audioItem == AudioReference.NO_TRACK) {
             return null;
