@@ -1,7 +1,10 @@
 # Change Log
 
+## [1.3.77] -- 2021-03-20 -- Fork
+### Fixed
+- Spotify's authentication should work after the original token expires (take 2)
 
-## [1.3.76] -- 2021-03-4/ -- Fork
+## [1.3.76] -- 2021-03-18 -- Fork
 ### Fixed
 - Spotify's authentication should work after the original token expires
 
