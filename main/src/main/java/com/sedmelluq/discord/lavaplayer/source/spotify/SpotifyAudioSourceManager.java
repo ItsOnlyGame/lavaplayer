@@ -49,9 +49,6 @@ public class SpotifyAudioSourceManager implements AudioSourceManager {
     private final SpotifySearchLoader searchHandle;
 
     private final SpotifySeveralTrackLoader severalTrackHandler;
-    private final ClientCredentialsRequest clientCredentialsRequest;
-
-    private ClientCredentials currentClientCredentials;
 
     public SpotifyAudioSourceManager(String clientId, String clientSecret, CountryCode countryCode) {
         this.spotifyApi = new SpotifyApi.Builder()
@@ -60,9 +57,6 @@ public class SpotifyAudioSourceManager implements AudioSourceManager {
                 .build();
 
         this.countryCode = countryCode;
-
-        this.clientCredentialsRequest = spotifyApi.clientCredentials().build();
-        loadClientCredentials();
 
         this.audioTrackFactory = new AudioTrackFactory(
                 new YoutubeSearchProvider(),
@@ -91,7 +85,6 @@ public class SpotifyAudioSourceManager implements AudioSourceManager {
     @Override
     public AudioItem loadItem(AudioPlayerManager manager, AudioReference reference) {
         try {
-
             loadClientCredentials();
 
 
@@ -127,8 +120,13 @@ public class SpotifyAudioSourceManager implements AudioSourceManager {
     }
 
     public AudioPlaylist getSeveralTracks(List<String> ids) {
-        loadClientCredentials();
-        return (AudioPlaylist) severalTrackHandler.handle(ids, audioTrackFactory, this, spotifyApi);
+        try {
+            loadClientCredentials();
+            return (AudioPlaylist) severalTrackHandler.handle(ids, audioTrackFactory, this, spotifyApi);
+        } catch (ParseException | SpotifyWebApiException | IOException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     @Override
@@ -152,14 +150,12 @@ public class SpotifyAudioSourceManager implements AudioSourceManager {
     }
 
 
-    private void loadClientCredentials() {
-        final CompletableFuture<ClientCredentials> clientCredentialsFuture = clientCredentialsRequest.executeAsync();
+    private void loadClientCredentials() throws ParseException, SpotifyWebApiException, IOException {
+        final ClientCredentialsRequest clientCredentialsRequest = spotifyApi.clientCredentials().build();
+        final ClientCredentials clientCredentials = clientCredentialsRequest.execute();
 
-        clientCredentialsFuture.thenAccept((clientCredentials -> {
-            currentClientCredentials = clientCredentials;
-            spotifyApi.setAccessToken(clientCredentials.getAccessToken());
-            logger.info("Expires in: " + clientCredentials.getExpiresIn() + "s");
-        }));
+        spotifyApi.setAccessToken(clientCredentials.getAccessToken());
+        logger.info("Expires in: " + clientCredentials.getExpiresIn() + "s");
     }
 
     public CountryCode getCountryCode() {
