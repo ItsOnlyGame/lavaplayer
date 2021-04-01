@@ -14,6 +14,8 @@ import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceM
 import com.sedmelluq.discord.lavaplayer.source.spotify.SpotifyAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.track.lyrics.LyricsInfo;
+import com.sedmelluq.discord.lavaplayer.track.lyrics.LyricsManager;
 import com.sedmelluq.lava.common.tools.DaemonThreadFactory;
 import net.dv8tion.jda.api.entities.ChannelType;
 import net.dv8tion.jda.api.entities.Guild;
@@ -57,6 +59,13 @@ public class BotApplicationManager extends ListenerAdapter {
 
 
     executorService = Executors.newScheduledThreadPool(1, new DaemonThreadFactory("bot"));
+
+    try {
+      LyricsInfo l = LyricsManager.getLyrics("bohemian rhapsody");
+      System.out.println(l.getLyrics());
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
   }
 
   public ScheduledExecutorService getExecutorService() {

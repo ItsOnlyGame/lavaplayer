@@ -33,7 +33,7 @@ public class LyricsManager {
     }
 
     private static LyricsInfo handleLyrics(String url) throws IOException {
-        Document doc = Jsoup.parse(new URL(url), 10000);
+        Document doc = Jsoup.connect(url).userAgent("chrome").get();
 
         boolean legacy = false;
 
