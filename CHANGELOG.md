@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.3.78] -- 2021-04-01
+### Fixed
+- Fix playing YouTube tracks by using a hardcoded consent cookie.
+
 ## [1.3.77] -- 2021-03-20 -- Fork
 ### Fixed
 - Spotify's authentication should work after the original token expires (take 2)

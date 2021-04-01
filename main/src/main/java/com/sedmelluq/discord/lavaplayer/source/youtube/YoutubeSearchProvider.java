@@ -43,9 +43,10 @@ public class YoutubeSearchProvider implements YoutubeSearchResultLoader {
     private final HttpInterfaceManager httpInterfaceManager;
     private final Pattern polymerInitialDataRegex = Pattern.compile("(window\\[\"ytInitialData\"]|var ytInitialData)\\s*=\\s*(.*);");
 
-    public YoutubeSearchProvider() {
-        this.httpInterfaceManager = HttpClientTools.createCookielessThreadLocalManager();
-    }
+  public YoutubeSearchProvider() {
+    this.httpInterfaceManager = HttpClientTools.createCookielessThreadLocalManager();
+    httpInterfaceManager.setHttpContextFilter(new BaseYoutubeHttpContextFilter());
+  }
 
     public ExtendedHttpConfigurable getHttpConfiguration() {
         return httpInterfaceManager;

@@ -44,9 +44,10 @@ public class YoutubeSearchMusicProvider implements YoutubeSearchMusicResultLoade
     private final HttpInterfaceManager httpInterfaceManager;
     private final Pattern ytMusicDataRegex = Pattern.compile("<body>\\s*(.*)\\s*</body>");
 
-    public YoutubeSearchMusicProvider() {
-        this.httpInterfaceManager = HttpClientTools.createCookielessThreadLocalManager();
-    }
+  public YoutubeSearchMusicProvider() {
+    this.httpInterfaceManager = HttpClientTools.createCookielessThreadLocalManager();
+    httpInterfaceManager.setHttpContextFilter(new BaseYoutubeHttpContextFilter());
+  }
 
     public ExtendedHttpConfigurable getHttpConfiguration() {
         return httpInterfaceManager;
@@ -104,25 +105,25 @@ public class YoutubeSearchMusicProvider implements YoutubeSearchMusicResultLoade
             return Collections.emptyList();
         }
 
-        JsonBrowser jsonBrowser = JsonBrowser.parse(matcher.group(1));
-        ArrayList<AudioTrack> list = new ArrayList<>();
-        JsonBrowser tracks = jsonBrowser.get("contents")
-                .get("sectionListRenderer")
-                .get("contents")
-                .index(0)
-                .get("musicShelfRenderer")
-                .get("contents");
-        if (tracks == JsonBrowser.NULL_BROWSER) {
-            tracks = jsonBrowser.get("contents")
-                    .get("sectionListRenderer")
-                    .get("contents")
-                    .index(1)
-                    .get("musicShelfRenderer")
-                    .get("contents");
-        }
-        tracks.values().forEach(json -> {
-            AudioTrack track = extractMusicData(json, trackFactory);
-            if (track != null) list.add(track);
+    JsonBrowser jsonBrowser = JsonBrowser.parse(matcher.group(1));
+    ArrayList<AudioTrack> list = new ArrayList<>();
+    JsonBrowser tracks = jsonBrowser.get("contents")
+            .get("sectionListRenderer")
+            .get("contents")
+            .index(0)
+            .get("musicShelfRenderer")
+            .get("contents");
+    if (tracks == JsonBrowser.NULL_BROWSER) {
+      tracks = jsonBrowser.get("contents")
+              .get("sectionListRenderer")
+              .get("contents")
+              .index(1)
+              .get("musicShelfRenderer")
+              .get("contents");
+    }
+    tracks.values().forEach(json -> {
+          AudioTrack track = extractMusicData(json, trackFactory);
+          if (track != null) list.add(track);
         });
         return list;
     }
