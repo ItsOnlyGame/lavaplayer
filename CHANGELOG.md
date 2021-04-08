@@ -1,5 +1,14 @@
 # Change Log
 
+## [1.3.80] -- 2021-04-08
+### Fixed
+- [Put YT playlist error extraction into a separate method](https://github.com/sedmelluq/lavaplayer/commit/68cac383c1aaebb72fceeaef629844376c0bc338)
+- [Fix issues with alerts causing errors in playlist loads](https://github.com/sedmelluq/lavaplayer/commit/85d60fc1156f92b07ee41910836210f132c3abaf)
+
+## [1.3.79] -- 2021-04-01
+### Pull request
+- Got the latest changes made to the original fork
+
 ## [1.3.78] -- 2021-04-01
 ### Fixed
 - Fix playing YouTube tracks by using a hardcoded consent cookie.

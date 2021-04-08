@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -59,10 +60,9 @@ public class DefaultYoutubePlaylistLoader implements YoutubePlaylistLoader {
 
         JsonBrowser jsonResponse = json.index(1).get("response");
 
-        JsonBrowser alerts = jsonResponse.get("alerts");
-
-        if (!alerts.isNull()) {
-            throw new FriendlyException(alerts.index(0).get("alertRenderer").get("text").get("simpleText").text(), COMMON, null);
+        String errorAlertMessage = findErrorAlert(jsonResponse);
+        if (errorAlertMessage != null) {
+            throw new FriendlyException(errorAlertMessage, COMMON, null);
         }
 
         JsonBrowser info = jsonResponse
@@ -128,6 +128,35 @@ public class DefaultYoutubePlaylistLoader implements YoutubePlaylistLoader {
 
         return new BasicAudioPlaylist(playlistName, tracks, findSelectedTrack(tracks, selectedVideoId), false, playlistUrl, null);
     }
+
+    private String findErrorAlert(JsonBrowser jsonResponse) {
+        JsonBrowser alerts = jsonResponse.get("alerts");
+
+        if (!alerts.isNull()) {
+            for(JsonBrowser alert : alerts.values()) {
+                JsonBrowser alertInner = alert.values().get(0);
+                String type = alertInner.get("type").text();
+
+                if("ERROR".equals(type)) {
+                    JsonBrowser textObject = alertInner.get("text");
+
+                    String text;
+                    if(!textObject.get("simpleText").isNull()) {
+                        text = textObject.get("simpleText").text();
+                    } else {
+                        text = textObject.get("runs").values().stream()
+                                .map(run -> run.get("text").text())
+                                .collect(Collectors.joining());
+                    }
+
+                    return text;
+                }
+            }
+        }
+
+        return null;
+    }
+
 
     private AudioTrack findSelectedTrack(List<AudioTrack> tracks, String selectedVideoId) {
         if (selectedVideoId != null) {
