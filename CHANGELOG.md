@@ -1,5 +1,18 @@
 # Change Log
 
+## [1.3.81] -- 2021-05-25
+## Pulled the latest changes from head
+
+### Fixed
+- Fixed playing YouTube tracks which require a separate verification request (PR #615 by Walkyst).
+- Fixed quotes in YouTube Music search breaking the request (PR #618 by Walkyst).
+- Fixed playing age restricted YouTube tracks (PR #627 by Walkyst).
+- Fixed SoundCloud URLs not working if they end with a slash (PR #626 by NavyCake).
+- Fixed using natives dependency which may have had outdated files in the new repository.
+
+### Added
+- Added a method to load tracks from the player manager by AudioReference (PR #620 by duncte123).
+
 ## [1.3.80] -- 2021-04-08
 ### Fixed
 - [Put YT playlist error extraction into a separate method](https://github.com/sedmelluq/lavaplayer/commit/68cac383c1aaebb72fceeaef629844376c0bc338)
@@ -7,7 +20,7 @@
 
 ## [1.3.79] -- 2021-04-01
 ### Pull request
-- Got the latest changes made to the original fork
+- Pulled the latest changes from head
 
 ## [1.3.78] -- 2021-04-01
 ### Fixed
