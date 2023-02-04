@@ -1,11 +1,13 @@
 # LavaPlayer - Audio player library for Discord
 
-### This is a fork of lavaplayer
+### **This is forked version of LavaPlayer, original repo here https://github.com/sedmelluq/lavaplayer**
 
-This fork contains support for spotify playback using the Spotify Developer API. It also has thumbnail artwork attached
-to the AudioTrackInfo objects
+Currently LavaPlayer repo is not actively maintained so decided create this fork, if main repo will be maintained again
+this fork will follow up and include all updates from it
 
-At the moment this package is not found in any repo. Just add this to your local repo.
+Custom branch used for my own updates and usage, it include playback and searching on Yandex Music, provide thumbnails
+from all available audio sources in `AudioTrackInfo` exclude http one (this is mainly breaking change, because it affect
+how all tracks decoded/encoded)
 
 LavaPlayer is an audio player library written in Java which can load audio tracks from various sources and convert them
 into a stream of Opus frames. It is designed for use with Discord bots, but it can be used anywhere where Opus format
