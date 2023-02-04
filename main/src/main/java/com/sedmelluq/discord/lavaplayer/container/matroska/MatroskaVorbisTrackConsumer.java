@@ -7,154 +7,155 @@ import com.sedmelluq.discord.lavaplayer.filter.AudioPipelineFactory;
 import com.sedmelluq.discord.lavaplayer.filter.PcmFormat;
 import com.sedmelluq.discord.lavaplayer.natives.vorbis.VorbisDecoder;
 import com.sedmelluq.discord.lavaplayer.track.playback.AudioProcessingContext;
+
 import java.nio.ByteBuffer;
 
 /**
  * Consumes Vorbis track data from a matroska file.
  */
 public class MatroskaVorbisTrackConsumer implements MatroskaTrackConsumer {
-  private static final int PCM_BUFFER_SIZE = 4096;
-  private static final int COPY_BUFFER_SIZE = 256;
+	private static final int PCM_BUFFER_SIZE = 4096;
+	private static final int COPY_BUFFER_SIZE = 256;
 
-  private final MatroskaFileTrack track;
-  private final VorbisDecoder decoder;
-  private final byte[] copyBuffer;
-  private final AudioPipeline downstream;
-  private ByteBuffer inputBuffer;
-  private float[][] channelPcmBuffers;
+	private final MatroskaFileTrack track;
+	private final VorbisDecoder decoder;
+	private final byte[] copyBuffer;
+	private final AudioPipeline downstream;
+	private ByteBuffer inputBuffer;
+	private float[][] channelPcmBuffers;
 
-  /**
-   * @param context Configuration and output information for processing
-   * @param track The associated matroska track
-   */
-  public MatroskaVorbisTrackConsumer(AudioProcessingContext context, MatroskaFileTrack track) {
+	/**
+	 * @param context Configuration and output information for processing
+	 * @param track   The associated matroska track
+	 */
+	public MatroskaVorbisTrackConsumer(AudioProcessingContext context, MatroskaFileTrack track) {
 
-    this.track = track;
-    this.decoder = new VorbisDecoder();
-    this.copyBuffer = new byte[COPY_BUFFER_SIZE];
+		this.track = track;
+		this.decoder = new VorbisDecoder();
+		this.copyBuffer = new byte[COPY_BUFFER_SIZE];
 
-    AudioDetails audioTrack = fillMissingDetails(track.audio, track.codecPrivate);
-    this.downstream = AudioPipelineFactory.create(context,
-        new PcmFormat(audioTrack.channels, (int) audioTrack.samplingFrequency));
-  }
+		AudioDetails audioTrack = fillMissingDetails(track.audio, track.codecPrivate);
+		this.downstream = AudioPipelineFactory.create(context,
+				new PcmFormat(audioTrack.channels, (int) audioTrack.samplingFrequency));
+	}
 
-  @Override
-  public MatroskaFileTrack getTrack() {
-    return track;
-  }
+	private static int readLacingValue(ByteBuffer buffer) {
+		int value = 0;
+		int current;
 
-  @Override
-  public void initialise() {
-    ByteBuffer directPrivateData = ByteBuffer.allocateDirect(track.codecPrivate.length);
+		do {
+			current = buffer.get() & 0xFF;
+			value += current;
+		} while (current == 255);
 
-    directPrivateData.put(track.codecPrivate);
-    directPrivateData.flip();
+		return value;
+	}
 
-    try {
-      int lengthInfoSize = directPrivateData.get();
+	private static AudioDetails fillMissingDetails(AudioDetails details, byte[] headers) {
+		if (details.channels != 0) {
+			return details;
+		}
 
-      if (lengthInfoSize != 2) {
-        throw new IllegalStateException("Unexpected lacing count.");
-      }
+		ByteBuffer buffer = ByteBuffer.wrap(headers);
+		readLacingValue(buffer); // first header size
+		readLacingValue(buffer); // second header size
 
-      int firstHeaderSize = readLacingValue(directPrivateData);
-      int secondHeaderSize = readLacingValue(directPrivateData);
+		buffer.getInt(); // vorbis version
+		int channelCount = buffer.get() & 0xFF;
 
-      ByteBuffer infoBuffer = directPrivateData.duplicate();
-      infoBuffer.limit(infoBuffer.position() + firstHeaderSize);
+		return new AudioDetails(details.samplingFrequency, details.outputSamplingFrequency, channelCount, details.bitDepth);
+	}
 
-      directPrivateData.position(directPrivateData.position() + firstHeaderSize + secondHeaderSize);
+	@Override
+	public MatroskaFileTrack getTrack() {
+		return track;
+	}
 
-      decoder.initialise(infoBuffer, directPrivateData);
+	@Override
+	public void initialise() {
+		ByteBuffer directPrivateData = ByteBuffer.allocateDirect(track.codecPrivate.length);
 
-      channelPcmBuffers = new float[decoder.getChannelCount()][];
+		directPrivateData.put(track.codecPrivate);
+		directPrivateData.flip();
 
-      for (int i = 0; i < channelPcmBuffers.length; i++) {
-        channelPcmBuffers[i] = new float[PCM_BUFFER_SIZE];
-      }
-    } catch (Exception e) {
-      throw new RuntimeException("Reading Vorbis header failed.", e);
-    }
-  }
+		try {
+			int lengthInfoSize = directPrivateData.get();
 
-  private static int readLacingValue(ByteBuffer buffer) {
-    int value = 0;
-    int current;
+			if (lengthInfoSize != 2) {
+				throw new IllegalStateException("Unexpected lacing count.");
+			}
 
-    do {
-      current = buffer.get() & 0xFF;
-      value += current;
-    } while (current == 255);
+			int firstHeaderSize = readLacingValue(directPrivateData);
+			int secondHeaderSize = readLacingValue(directPrivateData);
 
-    return value;
-  }
+			ByteBuffer infoBuffer = directPrivateData.duplicate();
+			infoBuffer.limit(infoBuffer.position() + firstHeaderSize);
 
-  private static AudioDetails fillMissingDetails(AudioDetails details, byte[] headers) {
-    if (details.channels != 0) {
-      return details;
-    }
+			directPrivateData.position(directPrivateData.position() + firstHeaderSize + secondHeaderSize);
 
-    ByteBuffer buffer = ByteBuffer.wrap(headers);
-    readLacingValue(buffer); // first header size
-    readLacingValue(buffer); // second header size
+			decoder.initialise(infoBuffer, directPrivateData);
 
-    buffer.getInt(); // vorbis version
-    int channelCount = buffer.get() & 0xFF;
+			channelPcmBuffers = new float[decoder.getChannelCount()][];
 
-    return new AudioDetails(details.samplingFrequency, details.outputSamplingFrequency, channelCount, details.bitDepth);
-  }
+			for (int i = 0; i < channelPcmBuffers.length; i++) {
+				channelPcmBuffers[i] = new float[PCM_BUFFER_SIZE];
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Reading Vorbis header failed.", e);
+		}
+	}
 
-  @Override
-  public void seekPerformed(long requestedTimecode, long providedTimecode) {
-    downstream.seekPerformed(requestedTimecode, providedTimecode);
-  }
+	@Override
+	public void seekPerformed(long requestedTimecode, long providedTimecode) {
+		downstream.seekPerformed(requestedTimecode, providedTimecode);
+	}
 
-  @Override
-  public void flush() throws InterruptedException {
-    downstream.flush();
-  }
+	@Override
+	public void flush() throws InterruptedException {
+		downstream.flush();
+	}
 
-  private ByteBuffer getDirectBuffer(int size) {
-    if (inputBuffer == null || inputBuffer.capacity() < size) {
-      inputBuffer = ByteBuffer.allocateDirect(size * 3 / 2);
-    }
+	private ByteBuffer getDirectBuffer(int size) {
+		if (inputBuffer == null || inputBuffer.capacity() < size) {
+			inputBuffer = ByteBuffer.allocateDirect(size * 3 / 2);
+		}
 
-    inputBuffer.clear();
-    return inputBuffer;
-  }
+		inputBuffer.clear();
+		return inputBuffer;
+	}
 
-  private ByteBuffer getAsDirectBuffer(ByteBuffer data) {
-    ByteBuffer buffer = getDirectBuffer(data.remaining());
+	private ByteBuffer getAsDirectBuffer(ByteBuffer data) {
+		ByteBuffer buffer = getDirectBuffer(data.remaining());
 
-    while (data.remaining() > 0) {
-      int chunk = Math.min(copyBuffer.length, data.remaining());
-      data.get(copyBuffer, 0, chunk);
-      buffer.put(copyBuffer, 0, chunk);
-    }
+		while (data.remaining() > 0) {
+			int chunk = Math.min(copyBuffer.length, data.remaining());
+			data.get(copyBuffer, 0, chunk);
+			buffer.put(copyBuffer, 0, chunk);
+		}
 
-    buffer.flip();
-    return buffer;
-  }
+		buffer.flip();
+		return buffer;
+	}
 
-  @Override
-  public void consume(ByteBuffer data) throws InterruptedException {
-    ByteBuffer directBuffer = getAsDirectBuffer(data);
-    decoder.input(directBuffer);
+	@Override
+	public void consume(ByteBuffer data) throws InterruptedException {
+		ByteBuffer directBuffer = getAsDirectBuffer(data);
+		decoder.input(directBuffer);
 
-    int output;
+		int output;
 
-    do {
-      output = decoder.output(channelPcmBuffers);
+		do {
+			output = decoder.output(channelPcmBuffers);
 
-      if (output > 0) {
-        downstream.process(channelPcmBuffers, 0, output);
-      }
-    } while (output == PCM_BUFFER_SIZE);
-  }
+			if (output > 0) {
+				downstream.process(channelPcmBuffers, 0, output);
+			}
+		} while (output == PCM_BUFFER_SIZE);
+	}
 
-  @Override
-  public void close() {
-    downstream.close();
-    decoder.close();
-  }
+	@Override
+	public void close() {
+		downstream.close();
+		decoder.close();
+	}
 }

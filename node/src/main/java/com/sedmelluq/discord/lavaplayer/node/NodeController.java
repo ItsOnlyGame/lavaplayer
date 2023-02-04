@@ -16,29 +16,29 @@ import java.io.IOException;
 
 @RestController
 public class NodeController {
-  private final MessageHandlerRegistry messageHandlerRegistry;
-  private final StatisticsManager statisticsManager;
-  private final RemoteMessageMapper mapper;
+	private final MessageHandlerRegistry messageHandlerRegistry;
+	private final StatisticsManager statisticsManager;
+	private final RemoteMessageMapper mapper;
 
-  @Autowired
-  public NodeController(MessageHandlerRegistry messageHandlerRegistry, StatisticsManager statisticsManager) {
-    this.messageHandlerRegistry = messageHandlerRegistry;
-    this.statisticsManager = statisticsManager;
-    this.mapper = new RemoteMessageMapper();
-  }
+	@Autowired
+	public NodeController(MessageHandlerRegistry messageHandlerRegistry, StatisticsManager statisticsManager) {
+		this.messageHandlerRegistry = messageHandlerRegistry;
+		this.statisticsManager = statisticsManager;
+		this.mapper = new RemoteMessageMapper();
+	}
 
-  @RequestMapping("/tick")
-  public void handeTick(HttpServletRequest request, HttpServletResponse response) throws IOException {
-    DataInputStream input = new DataInputStream(request.getInputStream());
-    DataOutputStream output = new DataOutputStream(response.getOutputStream());
-    MessageOutput messageOutput = new MessageOutput(mapper, output);
-    RemoteMessage message;
+	@RequestMapping("/tick")
+	public void handeTick(HttpServletRequest request, HttpServletResponse response) throws IOException {
+		DataInputStream input = new DataInputStream(request.getInputStream());
+		DataOutputStream output = new DataOutputStream(response.getOutputStream());
+		MessageOutput messageOutput = new MessageOutput(mapper, output);
+		RemoteMessage message;
 
-    while ((message = mapper.decode(input)) != null) {
-      messageHandlerRegistry.processMessage(message, messageOutput);
-    }
+		while ((message = mapper.decode(input)) != null) {
+			messageHandlerRegistry.processMessage(message, messageOutput);
+		}
 
-    messageOutput.send(statisticsManager.getStatistics());
-    mapper.endOutput(output);
-  }
+		messageOutput.send(statisticsManager.getStatistics());
+		mapper.endOutput(output);
+	}
 }

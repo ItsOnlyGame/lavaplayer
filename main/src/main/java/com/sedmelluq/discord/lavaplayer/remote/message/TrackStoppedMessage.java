@@ -5,15 +5,15 @@ package com.sedmelluq.discord.lavaplayer.remote.message;
  * so the track may be deleted from the node.
  */
 public class TrackStoppedMessage implements RemoteMessage {
-  /**
-   * The ID for the track executor
-   */
-  public final long executorId;
+	/**
+	 * The ID for the track executor
+	 */
+	public final long executorId;
 
-  /**
-   * @param executorId The ID for the track executor
-   */
-  public TrackStoppedMessage(long executorId) {
-    this.executorId = executorId;
-  }
+	/**
+	 * @param executorId The ID for the track executor
+	 */
+	public TrackStoppedMessage(long executorId) {
+		this.executorId = executorId;
+	}
 }

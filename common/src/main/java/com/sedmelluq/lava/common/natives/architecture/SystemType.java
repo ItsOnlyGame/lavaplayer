@@ -1,77 +1,78 @@
 package com.sedmelluq.lava.common.natives.architecture;
 
 import com.sedmelluq.lava.common.natives.NativeLibraryProperties;
+
 import java.util.Optional;
 
 public class SystemType {
-  public final ArchitectureType architectureType;
-  public final OperatingSystemType osType;
+	public final ArchitectureType architectureType;
+	public final OperatingSystemType osType;
 
-  public SystemType(ArchitectureType architectureType, OperatingSystemType osType) {
-    this.architectureType = architectureType;
-    this.osType = osType;
-  }
+	public SystemType(ArchitectureType architectureType, OperatingSystemType osType) {
+		this.architectureType = architectureType;
+		this.osType = osType;
+	}
 
-  public String formatSystemName() {
-    if (osType.identifier() != null) {
-      if (osType == DefaultOperatingSystemTypes.DARWIN) {
-        return osType.identifier();
-      } else {
-        return osType.identifier() + "-" + architectureType.identifier();
-      }
-    } else {
-      return architectureType.identifier();
-    }
-  }
+	public static SystemType detect(NativeLibraryProperties properties) {
+		String systemName = properties.getSystemName();
 
-  public String formatLibraryName(String libraryName) {
-    return osType.libraryFilePrefix() + libraryName + osType.libraryFileSuffix();
-  }
+		if (systemName != null) {
+			return new SystemType(
+					() -> systemName,
+					new UnknownOperatingSystem(
+							Optional.ofNullable(properties.getLibraryFileNamePrefix()).orElse("lib"),
+							Optional.ofNullable(properties.getLibraryFileNameSuffix()).orElse(".so")
+					)
+			);
+		}
 
-  public static SystemType detect(NativeLibraryProperties properties) {
-    String systemName = properties.getSystemName();
+		OperatingSystemType osType = DefaultOperatingSystemTypes.detect();
 
-    if (systemName != null) {
-      return new SystemType(
-          () -> systemName,
-          new UnknownOperatingSystem(
-              Optional.ofNullable(properties.getLibraryFileNamePrefix()).orElse("lib"),
-              Optional.ofNullable(properties.getLibraryFileNameSuffix()).orElse(".so")
-          )
-      );
-    }
+		String explicitArchitecture = properties.getArchitectureName();
+		ArchitectureType architectureType = explicitArchitecture != null ? () -> explicitArchitecture :
+				DefaultArchitectureTypes.detect();
 
-    OperatingSystemType osType = DefaultOperatingSystemTypes.detect();
+		return new SystemType(architectureType, osType);
+	}
 
-    String explicitArchitecture = properties.getArchitectureName();
-    ArchitectureType architectureType = explicitArchitecture != null ? () -> explicitArchitecture :
-        DefaultArchitectureTypes.detect();
+	public String formatSystemName() {
+		if (osType.identifier() != null) {
+			if (osType == DefaultOperatingSystemTypes.DARWIN) {
+				return osType.identifier();
+			} else {
+				return osType.identifier() + "-" + architectureType.identifier();
+			}
+		} else {
+			return architectureType.identifier();
+		}
+	}
 
-    return new SystemType(architectureType, osType);
-  }
+	public String formatLibraryName(String libraryName) {
+		return osType.libraryFilePrefix() + libraryName + osType.libraryFileSuffix();
+	}
 
-  private static class UnknownOperatingSystem implements OperatingSystemType {
-    private final String libraryFilePrefix;
-    private final String libraryFileSuffix;
+	private static class UnknownOperatingSystem implements OperatingSystemType {
+		private final String libraryFilePrefix;
+		private final String libraryFileSuffix;
 
-    private UnknownOperatingSystem(String libraryFilePrefix, String libraryFileSuffix) {
-      this.libraryFilePrefix = libraryFilePrefix;
-      this.libraryFileSuffix = libraryFileSuffix;
-    }
+		private UnknownOperatingSystem(String libraryFilePrefix, String libraryFileSuffix) {
+			this.libraryFilePrefix = libraryFilePrefix;
+			this.libraryFileSuffix = libraryFileSuffix;
+		}
 
-    @Override
-    public String identifier() {
-      return null;
-    }
+		@Override
+		public String identifier() {
+			return null;
+		}
 
-    @Override
-    public String libraryFilePrefix() {
-      return libraryFilePrefix;
-    }
+		@Override
+		public String libraryFilePrefix() {
+			return libraryFilePrefix;
+		}
 
-    @Override
-    public String libraryFileSuffix() {
-      return libraryFileSuffix;
-    }
-  }
+		@Override
+		public String libraryFileSuffix() {
+			return libraryFileSuffix;
+		}
+	}
 }

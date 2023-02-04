@@ -10,174 +10,175 @@ import com.sedmelluq.discord.lavaplayer.tools.io.SeekableInputStream;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
 import com.sedmelluq.discord.lavaplayer.track.DelegatedAudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.playback.LocalAudioTrackExecutor;
+import org.apache.http.client.methods.HttpGet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
-import org.apache.http.client.methods.HttpGet;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class SoundCloudM3uAudioTrack extends DelegatedAudioTrack {
-  private static final Logger log = LoggerFactory.getLogger(SoundCloudM3uAudioTrack.class);
+	private static final Logger log = LoggerFactory.getLogger(SoundCloudM3uAudioTrack.class);
 
-  private static final long SEGMENT_UPDATE_INTERVAL = TimeUnit.MINUTES.toMillis(10);
+	private static final long SEGMENT_UPDATE_INTERVAL = TimeUnit.MINUTES.toMillis(10);
 
-  private final HttpInterface httpInterface;
-  private final SoundCloudM3uInfo m3uInfo;
+	private final HttpInterface httpInterface;
+	private final SoundCloudM3uInfo m3uInfo;
 
-  public SoundCloudM3uAudioTrack(AudioTrackInfo trackInfo, HttpInterface httpInterface, SoundCloudM3uInfo m3uInfo) {
-    super(trackInfo);
-    this.httpInterface = httpInterface;
-    this.m3uInfo = m3uInfo;
-  }
+	public SoundCloudM3uAudioTrack(AudioTrackInfo trackInfo, HttpInterface httpInterface, SoundCloudM3uInfo m3uInfo) {
+		super(trackInfo);
+		this.httpInterface = httpInterface;
+		this.m3uInfo = m3uInfo;
+	}
 
-  @Override
-  public void process(LocalAudioTrackExecutor localExecutor) throws Exception {
-    try (SegmentTracker segmentTracker = createSegmentTracker()) {
-      segmentTracker.decoder.prepareStream(true);
+	@Override
+	public void process(LocalAudioTrackExecutor localExecutor) throws Exception {
+		try (SegmentTracker segmentTracker = createSegmentTracker()) {
+			segmentTracker.decoder.prepareStream(true);
 
-      localExecutor.executeProcessingLoop(() -> segmentTracker.decoder.playStream(
-          localExecutor.getProcessingContext(),
-          segmentTracker.streamStartPosition,
-          segmentTracker.desiredPosition
-      ), segmentTracker::seekToTimecode, true);
-    }
-  }
+			localExecutor.executeProcessingLoop(() -> segmentTracker.decoder.playStream(
+					localExecutor.getProcessingContext(),
+					segmentTracker.streamStartPosition,
+					segmentTracker.desiredPosition
+			), segmentTracker::seekToTimecode, true);
+		}
+	}
 
-  private List<HlsStreamSegment> loadSegments() throws IOException {
-    String playbackUrl = SoundCloudHelper.loadPlaybackUrl(httpInterface, m3uInfo.lookupUrl);
-    return HlsStreamSegmentParser.parseFromUrl(httpInterface, playbackUrl);
-  }
+	private List<HlsStreamSegment> loadSegments() throws IOException {
+		String playbackUrl = SoundCloudHelper.loadPlaybackUrl(httpInterface, m3uInfo.lookupUrl);
+		return HlsStreamSegmentParser.parseFromUrl(httpInterface, playbackUrl);
+	}
 
-  private SegmentTracker createSegmentTracker() throws IOException {
-    List<HlsStreamSegment> initialSegments = loadSegments();
-    SegmentTracker tracker = new SegmentTracker(initialSegments);
-    tracker.setupDecoder(m3uInfo.decoderFactory);
-    return tracker;
-  }
+	private SegmentTracker createSegmentTracker() throws IOException {
+		List<HlsStreamSegment> initialSegments = loadSegments();
+		SegmentTracker tracker = new SegmentTracker(initialSegments);
+		tracker.setupDecoder(m3uInfo.decoderFactory);
+		return tracker;
+	}
 
-  private class SegmentTracker implements AutoCloseable {
-    private final List<HlsStreamSegment> segments;
-    private long desiredPosition = 0;
-    private long streamStartPosition = 0;
-    private long lastUpdate;
-    private SoundCloudSegmentDecoder decoder;
-    private int segmentIndex = 0;
+	private class SegmentTracker implements AutoCloseable {
+		private final List<HlsStreamSegment> segments;
+		private long desiredPosition = 0;
+		private long streamStartPosition = 0;
+		private long lastUpdate;
+		private SoundCloudSegmentDecoder decoder;
+		private int segmentIndex = 0;
 
-    private SegmentTracker(List<HlsStreamSegment> segments) {
-      this.segments = segments;
-      this.lastUpdate = System.currentTimeMillis();
-    }
+		private SegmentTracker(List<HlsStreamSegment> segments) {
+			this.segments = segments;
+			this.lastUpdate = System.currentTimeMillis();
+		}
 
-    private void setupDecoder(SoundCloudSegmentDecoder.Factory factory) {
-      decoder = factory.create(this::createChainedStream);
-    }
+		private void setupDecoder(SoundCloudSegmentDecoder.Factory factory) {
+			decoder = factory.create(this::createChainedStream);
+		}
 
-    private SeekableInputStream createChainedStream() {
-      return new NonSeekableInputStream(new ChainedInputStream(this::getNextStream));
-    }
+		private SeekableInputStream createChainedStream() {
+			return new NonSeekableInputStream(new ChainedInputStream(this::getNextStream));
+		}
 
-    private void seekToTimecode(long timecode) throws IOException {
-      long segmentTimecode = 0;
+		private void seekToTimecode(long timecode) throws IOException {
+			long segmentTimecode = 0;
 
-      for (int i = 0; i < segments.size(); i++) {
-        Long duration = segments.get(i).duration;
+			for (int i = 0; i < segments.size(); i++) {
+				Long duration = segments.get(i).duration;
 
-        if (duration == null) {
-          break;
-        }
+				if (duration == null) {
+					break;
+				}
 
-        long nextTimecode = segmentTimecode + duration;
+				long nextTimecode = segmentTimecode + duration;
 
-        if (timecode >= segmentTimecode && timecode < nextTimecode) {
-          seekToSegment(i, timecode, segmentTimecode);
-          return;
-        }
+				if (timecode >= segmentTimecode && timecode < nextTimecode) {
+					seekToSegment(i, timecode, segmentTimecode);
+					return;
+				}
 
-        segmentTimecode = nextTimecode;
-      }
+				segmentTimecode = nextTimecode;
+			}
 
-      seekToEnd();
-    }
+			seekToEnd();
+		}
 
-    private void seekToSegment(int index, long requestedTimecode, long segmentTimecode) throws IOException {
-      decoder.resetStream();
+		private void seekToSegment(int index, long requestedTimecode, long segmentTimecode) throws IOException {
+			decoder.resetStream();
 
-      segmentIndex = index;
-      desiredPosition = requestedTimecode;
-      streamStartPosition = segmentTimecode;
+			segmentIndex = index;
+			desiredPosition = requestedTimecode;
+			streamStartPosition = segmentTimecode;
 
-      decoder.prepareStream(streamStartPosition == 0);
-    }
+			decoder.prepareStream(streamStartPosition == 0);
+		}
 
-    private void seekToEnd() throws IOException {
-      decoder.resetStream();
+		private void seekToEnd() throws IOException {
+			decoder.resetStream();
 
-      segmentIndex = segments.size();
-    }
+			segmentIndex = segments.size();
+		}
 
-    private InputStream getNextStream() {
-      HlsStreamSegment segment = getNextSegment();
+		private InputStream getNextStream() {
+			HlsStreamSegment segment = getNextSegment();
 
-      if (segment == null) {
-        return null;
-      }
+			if (segment == null) {
+				return null;
+			}
 
-      return HttpStreamTools.streamContent(httpInterface, new HttpGet(segment.url));
-    }
+			return HttpStreamTools.streamContent(httpInterface, new HttpGet(segment.url));
+		}
 
-    private void updateSegmentList() {
-      try {
-        List<HlsStreamSegment> newSegments = loadSegments();
+		private void updateSegmentList() {
+			try {
+				List<HlsStreamSegment> newSegments = loadSegments();
 
-        if (newSegments.size() != segments.size()) {
-          log.error("For {}, received different number of segments on update, skipping.", trackInfo.identifier);
-          return;
-        }
+				if (newSegments.size() != segments.size()) {
+					log.error("For {}, received different number of segments on update, skipping.", trackInfo.identifier);
+					return;
+				}
 
-        for (int i = 0; i < segments.size(); i++) {
-          if (!Objects.equals(newSegments.get(i).duration, segments.get(i).duration)) {
-            log.error("For {}, segment {} has different length than previously on update.", trackInfo.identifier, i);
-            return;
-          }
-        }
+				for (int i = 0; i < segments.size(); i++) {
+					if (!Objects.equals(newSegments.get(i).duration, segments.get(i).duration)) {
+						log.error("For {}, segment {} has different length than previously on update.", trackInfo.identifier, i);
+						return;
+					}
+				}
 
-        for (int i = 0; i < segments.size(); i++) {
-          segments.set(i, newSegments.get(i));
-        }
-      } catch (Exception e) {
-        log.error("For {}, failed to update segment list, skipping.", trackInfo.identifier, e);
-      }
-    }
+				for (int i = 0; i < segments.size(); i++) {
+					segments.set(i, newSegments.get(i));
+				}
+			} catch (Exception e) {
+				log.error("For {}, failed to update segment list, skipping.", trackInfo.identifier, e);
+			}
+		}
 
-    private void checkSegmentListUpdate() {
-      long now = System.currentTimeMillis();
-      long delta = now - lastUpdate;
+		private void checkSegmentListUpdate() {
+			long now = System.currentTimeMillis();
+			long delta = now - lastUpdate;
 
-      if (delta > SEGMENT_UPDATE_INTERVAL) {
-        log.debug("For {}, {}ms has passed since last segment update, updating", trackInfo.identifier, delta);
+			if (delta > SEGMENT_UPDATE_INTERVAL) {
+				log.debug("For {}, {}ms has passed since last segment update, updating", trackInfo.identifier, delta);
 
-        updateSegmentList();
-        lastUpdate = now;
-      }
-    }
+				updateSegmentList();
+				lastUpdate = now;
+			}
+		}
 
-    private HlsStreamSegment getNextSegment() {
-      int current = segmentIndex++;
+		private HlsStreamSegment getNextSegment() {
+			int current = segmentIndex++;
 
-      if (current < segments.size()) {
-        checkSegmentListUpdate();
-        return segments.get(current);
-      } else {
-        return null;
-      }
-    }
+			if (current < segments.size()) {
+				checkSegmentListUpdate();
+				return segments.get(current);
+			} else {
+				return null;
+			}
+		}
 
-    @Override
-    public void close() throws Exception {
-      decoder.resetStream();
-    }
-  }
+		@Override
+		public void close() throws Exception {
+			decoder.resetStream();
+		}
+	}
 }

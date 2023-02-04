@@ -1,6 +1,7 @@
 package com.sedmelluq.discord.lavaplayer.container.adts;
 
 import com.sedmelluq.discord.lavaplayer.tools.io.BitBufferReader;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -9,156 +10,156 @@ import java.nio.ByteBuffer;
  * Finds and reads ADTS packet headers from an input stream.
  */
 public class AdtsStreamReader {
-  private static final AdtsPacketHeader EOF_PACKET = new AdtsPacketHeader(false, 0, 0, 0, 0);
+	private static final AdtsPacketHeader EOF_PACKET = new AdtsPacketHeader(false, 0, 0, 0, 0);
 
-  private static final int HEADER_BASE_SIZE = 7;
-  private static final int INVALID_VALUE = -1;
+	private static final int HEADER_BASE_SIZE = 7;
+	private static final int INVALID_VALUE = -1;
 
-  private static final int[] sampleRateMapping = new int[] {
-      96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050,
-      16000, 12000, 11025, 8000, 7350, INVALID_VALUE, INVALID_VALUE, INVALID_VALUE
-  };
+	private static final int[] sampleRateMapping = new int[]{
+			96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050,
+			16000, 12000, 11025, 8000, 7350, INVALID_VALUE, INVALID_VALUE, INVALID_VALUE
+	};
 
-  private final InputStream inputStream;
-  private final byte[] scanBuffer;
-  private final ByteBuffer scanByteBuffer;
-  private final BitBufferReader scanBufferReader;
-  private AdtsPacketHeader currentPacket;
+	private final InputStream inputStream;
+	private final byte[] scanBuffer;
+	private final ByteBuffer scanByteBuffer;
+	private final BitBufferReader scanBufferReader;
+	private AdtsPacketHeader currentPacket;
 
-  /**
-   * @param inputStream The input stream to use.
-   */
-  public AdtsStreamReader(InputStream inputStream) {
-    this.inputStream = inputStream;
-    this.scanBuffer = new byte[32];
-    this.scanByteBuffer = ByteBuffer.wrap(scanBuffer);
-    this.scanBufferReader = new BitBufferReader(scanByteBuffer);
-  }
+	/**
+	 * @param inputStream The input stream to use.
+	 */
+	public AdtsStreamReader(InputStream inputStream) {
+		this.inputStream = inputStream;
+		this.scanBuffer = new byte[32];
+		this.scanByteBuffer = ByteBuffer.wrap(scanBuffer);
+		this.scanBufferReader = new BitBufferReader(scanByteBuffer);
+	}
 
-  /**
-   * Scan the input stream for an ADTS packet header. Subsequent calls will return the same header until nextPacket() is
-   * called.
-   *
-   * @return The packet header if found before EOF.
-   * @throws IOException On read error.
-   */
-  public AdtsPacketHeader findPacketHeader() throws IOException {
-    return findPacketHeader(Integer.MAX_VALUE);
-  }
+	private static void copyEndToBeginning(byte[] buffer, int chunk) {
+		for (int i = 0; i < chunk; i++) {
+			buffer[i] = buffer[buffer.length - chunk + i];
+		}
+	}
 
-  /**
-   * Scan the input stream for an ADTS packet header. Subsequent calls will return the same header until nextPacket() is
-   * called.
-   *
-   * @param maximumDistance Maximum number of bytes to scan.
-   * @return The packet header if found before EOF and maximum byte limit.
-   * @throws IOException On read error.
-   */
-  public AdtsPacketHeader findPacketHeader(int maximumDistance) throws IOException {
-    if (currentPacket == null) {
-      currentPacket = scanForPacketHeader(maximumDistance);
-    }
+	private static AdtsPacketHeader readHeader(BitBufferReader reader) {
+		if ((reader.asLong(15) & 0x7FFB) != 0x7FF8) {
+			// Possible reasons:
+			// 1) Syncword is not present, cannot be an ADTS header
+			// 2) Layer value is not 0, which must always be 0 for ADTS
+			return null;
+		}
 
-    return currentPacket == EOF_PACKET ? null : currentPacket;
-  }
+		boolean isProtectionAbsent = reader.asLong(1) == 1;
+		int profile = reader.asInteger(2);
+		int sampleRate = sampleRateMapping[reader.asInteger(4)];
 
-  /**
-   * Resets the current packet, makes next calls to findPacketHeader scan for the next occurrence in the stream.
-   */
-  public void nextPacket() {
-    currentPacket = null;
-  }
+		// Private bit
+		reader.asLong(1);
 
-  private AdtsPacketHeader scanForPacketHeader(int maximumDistance) throws IOException {
-    int bufferPosition = 0;
+		int channels = reader.asInteger(3);
 
-    for (int i = 0; i < maximumDistance; i++) {
-      int nextByte = inputStream.read();
+		if (sampleRate == INVALID_VALUE || channels == 0) {
+			return null;
+		}
 
-      if (nextByte == -1) {
-        return EOF_PACKET;
-      }
+		// 4 boring bits
+		reader.asLong(4);
 
-      scanBuffer[bufferPosition++] = (byte) nextByte;
+		int frameLength = reader.asInteger(13);
+		int payloadLength = frameLength - 7 - (isProtectionAbsent ? 0 : 2);
 
-      if (bufferPosition >= HEADER_BASE_SIZE) {
-        AdtsPacketHeader header = readHeaderFromBufferTail(bufferPosition);
+		// More boring bits
+		reader.asLong(11);
 
-        if (header != null) {
-          return header;
-        }
-      }
+		if (reader.asLong(2) != 0) {
+			// Not handling multiple frames per packet
+			return null;
+		}
 
-      if (bufferPosition == scanBuffer.length) {
-        copyEndToBeginning(scanBuffer, HEADER_BASE_SIZE);
-        bufferPosition = HEADER_BASE_SIZE;
-      }
-    }
+		return new AdtsPacketHeader(isProtectionAbsent, profile + 1, sampleRate, channels, payloadLength);
+	}
 
-    return null;
-  }
+	/**
+	 * Scan the input stream for an ADTS packet header. Subsequent calls will return the same header until nextPacket() is
+	 * called.
+	 *
+	 * @return The packet header if found before EOF.
+	 * @throws IOException On read error.
+	 */
+	public AdtsPacketHeader findPacketHeader() throws IOException {
+		return findPacketHeader(Integer.MAX_VALUE);
+	}
 
-  private AdtsPacketHeader readHeaderFromBufferTail(int position) throws IOException {
-    scanByteBuffer.position(position - HEADER_BASE_SIZE);
+	/**
+	 * Scan the input stream for an ADTS packet header. Subsequent calls will return the same header until nextPacket() is
+	 * called.
+	 *
+	 * @param maximumDistance Maximum number of bytes to scan.
+	 * @return The packet header if found before EOF and maximum byte limit.
+	 * @throws IOException On read error.
+	 */
+	public AdtsPacketHeader findPacketHeader(int maximumDistance) throws IOException {
+		if (currentPacket == null) {
+			currentPacket = scanForPacketHeader(maximumDistance);
+		}
 
-    AdtsPacketHeader header = readHeader(scanBufferReader);
-    scanBufferReader.readRemainingBits();
+		return currentPacket == EOF_PACKET ? null : currentPacket;
+	}
 
-    if (header == null) {
-      return null;
-    } else if (!header.isProtectionAbsent) {
-      int crcFirst = inputStream.read();
-      int crcSecond = inputStream.read();
+	/**
+	 * Resets the current packet, makes next calls to findPacketHeader scan for the next occurrence in the stream.
+	 */
+	public void nextPacket() {
+		currentPacket = null;
+	}
 
-      if (crcFirst == -1 || crcSecond == -1) {
-        return EOF_PACKET;
-      }
-    }
+	private AdtsPacketHeader scanForPacketHeader(int maximumDistance) throws IOException {
+		int bufferPosition = 0;
 
-    return header;
-  }
+		for (int i = 0; i < maximumDistance; i++) {
+			int nextByte = inputStream.read();
 
-  private static void copyEndToBeginning(byte[] buffer, int chunk) {
-    for (int i = 0; i < chunk; i++) {
-      buffer[i] = buffer[buffer.length - chunk + i];
-    }
-  }
+			if (nextByte == -1) {
+				return EOF_PACKET;
+			}
 
-  private static AdtsPacketHeader readHeader(BitBufferReader reader) {
-    if ((reader.asLong(15) & 0x7FFB) != 0x7FF8) {
-      // Possible reasons:
-      // 1) Syncword is not present, cannot be an ADTS header
-      // 2) Layer value is not 0, which must always be 0 for ADTS
-      return null;
-    }
+			scanBuffer[bufferPosition++] = (byte) nextByte;
 
-    boolean isProtectionAbsent = reader.asLong(1) == 1;
-    int profile = reader.asInteger(2);
-    int sampleRate = sampleRateMapping[reader.asInteger(4)];
+			if (bufferPosition >= HEADER_BASE_SIZE) {
+				AdtsPacketHeader header = readHeaderFromBufferTail(bufferPosition);
 
-    // Private bit
-    reader.asLong(1);
+				if (header != null) {
+					return header;
+				}
+			}
 
-    int channels = reader.asInteger(3);
+			if (bufferPosition == scanBuffer.length) {
+				copyEndToBeginning(scanBuffer, HEADER_BASE_SIZE);
+				bufferPosition = HEADER_BASE_SIZE;
+			}
+		}
 
-    if (sampleRate == INVALID_VALUE || channels == 0) {
-      return null;
-    }
+		return null;
+	}
 
-    // 4 boring bits
-    reader.asLong(4);
+	private AdtsPacketHeader readHeaderFromBufferTail(int position) throws IOException {
+		scanByteBuffer.position(position - HEADER_BASE_SIZE);
 
-    int frameLength = reader.asInteger(13);
-    int payloadLength = frameLength - 7 - (isProtectionAbsent ? 0 : 2);
+		AdtsPacketHeader header = readHeader(scanBufferReader);
+		scanBufferReader.readRemainingBits();
 
-    // More boring bits
-    reader.asLong(11);
+		if (header == null) {
+			return null;
+		} else if (!header.isProtectionAbsent) {
+			int crcFirst = inputStream.read();
+			int crcSecond = inputStream.read();
 
-    if (reader.asLong(2) != 0) {
-      // Not handling multiple frames per packet
-      return null;
-    }
+			if (crcFirst == -1 || crcSecond == -1) {
+				return EOF_PACKET;
+			}
+		}
 
-    return new AdtsPacketHeader(isProtectionAbsent, profile + 1, sampleRate, channels, payloadLength);
-  }
+		return header;
+	}
 }

@@ -1,18 +1,15 @@
 package com.sedmelluq.lava.common.natives;
 
 import com.sedmelluq.lava.common.natives.architecture.SystemType;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.function.Predicate;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.*;
+import java.util.function.Predicate;
 
 import static java.nio.file.attribute.PosixFilePermissions.asFileAttribute;
 import static java.nio.file.attribute.PosixFilePermissions.fromString;
@@ -21,200 +18,200 @@ import static java.nio.file.attribute.PosixFilePermissions.fromString;
  * Loads native libraries by name. Libraries are expected to be in classpath /natives/[arch]/[prefix]name[suffix]
  */
 public class NativeLibraryLoader {
-  private static final Logger log = LoggerFactory.getLogger(NativeLibraryLoader.class);
+	private static final Logger log = LoggerFactory.getLogger(NativeLibraryLoader.class);
 
-  private static final String DEFAULT_PROPERTY_PREFIX = "lava.native.";
-  private static final String DEFAULT_RESOURCE_ROOT = "/natives/";
+	private static final String DEFAULT_PROPERTY_PREFIX = "lava.native.";
+	private static final String DEFAULT_RESOURCE_ROOT = "/natives/";
 
-  private final String libraryName;
-  private final Predicate<SystemType> systemFilter;
-  private final NativeLibraryProperties properties;
-  private final NativeLibraryBinaryProvider binaryProvider;
-  private final Object lock;
-  private volatile LoadResult previousResult;
+	private final String libraryName;
+	private final Predicate<SystemType> systemFilter;
+	private final NativeLibraryProperties properties;
+	private final NativeLibraryBinaryProvider binaryProvider;
+	private final Object lock;
+	private volatile LoadResult previousResult;
 
-  public NativeLibraryLoader(String libraryName, Predicate<SystemType> systemFilter, NativeLibraryProperties properties,
-                             NativeLibraryBinaryProvider binaryProvider) {
+	public NativeLibraryLoader(String libraryName, Predicate<SystemType> systemFilter, NativeLibraryProperties properties,
+	                           NativeLibraryBinaryProvider binaryProvider) {
 
-    this.libraryName = libraryName;
-    this.systemFilter = systemFilter;
-    this.binaryProvider = binaryProvider;
-    this.properties = properties;
-    this.lock = new Object();
-  }
+		this.libraryName = libraryName;
+		this.systemFilter = systemFilter;
+		this.binaryProvider = binaryProvider;
+		this.properties = properties;
+		this.lock = new Object();
+	}
 
-  public static NativeLibraryLoader create(Class<?> classLoaderSample, String libraryName) {
-    return createFiltered(classLoaderSample, libraryName, null);
-  }
+	public static NativeLibraryLoader create(Class<?> classLoaderSample, String libraryName) {
+		return createFiltered(classLoaderSample, libraryName, null);
+	}
 
-  public static NativeLibraryLoader createFiltered(Class<?> classLoaderSample, String libraryName,
-                                                   Predicate<SystemType> systemFilter) {
+	public static NativeLibraryLoader createFiltered(Class<?> classLoaderSample, String libraryName,
+	                                                 Predicate<SystemType> systemFilter) {
 
-    return new NativeLibraryLoader(
-        libraryName,
-        systemFilter,
-        new SystemNativeLibraryProperties(libraryName, DEFAULT_PROPERTY_PREFIX),
-        new ResourceNativeLibraryBinaryProvider(classLoaderSample, DEFAULT_RESOURCE_ROOT)
-    );
-  }
+		return new NativeLibraryLoader(
+				libraryName,
+				systemFilter,
+				new SystemNativeLibraryProperties(libraryName, DEFAULT_PROPERTY_PREFIX),
+				new ResourceNativeLibraryBinaryProvider(classLoaderSample, DEFAULT_RESOURCE_ROOT)
+		);
+	}
 
-  public void load() {
-    LoadResult result = previousResult;
+	private static void createDirectoriesWithFullPermissions(Path path) throws IOException {
+		boolean isPosix = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
 
-    if (result == null) {
-      synchronized (lock) {
-        result = previousResult;
+		if (!isPosix) {
+			Files.createDirectories(path);
+		} else {
+			Files.createDirectories(path, asFileAttribute(fromString("rwxrwxrwx")));
+		}
+	}
 
-        if (result == null) {
-          result = loadWithFailureCheck();
-          previousResult = result;
-        }
-      }
-    }
+	public void load() {
+		LoadResult result = previousResult;
 
-    if (!result.success) {
-      throw result.exception;
-    }
-  }
+		if (result == null) {
+			synchronized (lock) {
+				result = previousResult;
 
-  private LoadResult loadWithFailureCheck() {
-    log.info("Native library {}: loading with filter {}", libraryName, systemFilter);
+				if (result == null) {
+					result = loadWithFailureCheck();
+					previousResult = result;
+				}
+			}
+		}
 
-    try {
-      loadInternal();
-      return new LoadResult(true, null);
-    } catch (Throwable e) {
-      log.error("Native library {}: loading failed.", libraryName, e);
-      return new LoadResult(false, new RuntimeException(e));
-    }
-  }
+		if (!result.success) {
+			throw result.exception;
+		}
+	}
 
-  private void loadInternal() {
-    String explicitPath = properties.getLibraryPath();
+	private LoadResult loadWithFailureCheck() {
+		log.info("Native library {}: loading with filter {}", libraryName, systemFilter);
 
-    if (explicitPath != null) {
-      log.debug("Native library {}: explicit path provided {}", libraryName, explicitPath);
+		try {
+			loadInternal();
+			return new LoadResult(true, null);
+		} catch (Throwable e) {
+			log.error("Native library {}: loading failed.", libraryName, e);
+			return new LoadResult(false, new RuntimeException(e));
+		}
+	}
 
-      loadFromFile(Paths.get(explicitPath).toAbsolutePath());
-    } else {
-      SystemType systemType = detectMatchingSystemType();
+	private void loadInternal() {
+		String explicitPath = properties.getLibraryPath();
 
-      if (systemType != null) {
-        String explicitDirectory = properties.getLibraryDirectory();
+		if (explicitPath != null) {
+			log.debug("Native library {}: explicit path provided {}", libraryName, explicitPath);
 
-        if (explicitDirectory != null) {
-          log.debug("Native library {}: explicit directory provided {}", libraryName, explicitDirectory);
+			loadFromFile(Paths.get(explicitPath).toAbsolutePath());
+		} else {
+			SystemType systemType = detectMatchingSystemType();
 
-          loadFromFile(Paths.get(explicitDirectory, systemType.formatLibraryName(libraryName)).toAbsolutePath());
-        } else {
-          loadFromFile(extractLibraryFromResources(systemType));
-        }
-      }
-    }
-  }
+			if (systemType != null) {
+				String explicitDirectory = properties.getLibraryDirectory();
 
-  private void loadFromFile(Path libraryFilePath) {
-    log.debug("Native library {}: attempting to load library at {}", libraryName, libraryFilePath);
-    System.load(libraryFilePath.toAbsolutePath().toString());
-    log.info("Native library {}: successfully loaded.", libraryName);
-  }
+				if (explicitDirectory != null) {
+					log.debug("Native library {}: explicit directory provided {}", libraryName, explicitDirectory);
 
-  private Path extractLibraryFromResources(SystemType systemType) {
-    try (InputStream libraryStream = binaryProvider.getLibraryStream(systemType, libraryName)) {
-      if (libraryStream == null) {
-        throw new UnsatisfiedLinkError("Required library was not found");
-      }
+					loadFromFile(Paths.get(explicitDirectory, systemType.formatLibraryName(libraryName)).toAbsolutePath());
+				} else {
+					loadFromFile(extractLibraryFromResources(systemType));
+				}
+			}
+		}
+	}
 
-      Path extractedLibraryPath = prepareExtractionDirectory().resolve(systemType.formatLibraryName(libraryName));
+	private void loadFromFile(Path libraryFilePath) {
+		log.debug("Native library {}: attempting to load library at {}", libraryName, libraryFilePath);
+		System.load(libraryFilePath.toAbsolutePath().toString());
+		log.info("Native library {}: successfully loaded.", libraryName);
+	}
 
-      try (FileOutputStream fileStream = new FileOutputStream(extractedLibraryPath.toFile())) {
-        IOUtils.copy(libraryStream, fileStream);
-      }
+	private Path extractLibraryFromResources(SystemType systemType) {
+		try (InputStream libraryStream = binaryProvider.getLibraryStream(systemType, libraryName)) {
+			if (libraryStream == null) {
+				throw new UnsatisfiedLinkError("Required library was not found");
+			}
 
-      return extractedLibraryPath;
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-  }
+			Path extractedLibraryPath = prepareExtractionDirectory().resolve(systemType.formatLibraryName(libraryName));
 
-  private Path prepareExtractionDirectory() throws IOException {
-    Path extractionDirectory = detectExtractionBaseDirectory().resolve(String.valueOf(System.currentTimeMillis()));
+			try (FileOutputStream fileStream = new FileOutputStream(extractedLibraryPath.toFile())) {
+				IOUtils.copy(libraryStream, fileStream);
+			}
 
-    if (!Files.isDirectory(extractionDirectory)) {
-      log.debug("Native library {}: extraction directory {} does not exist, creating.", libraryName,
-          extractionDirectory);
+			return extractedLibraryPath;
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
 
-      try {
-        createDirectoriesWithFullPermissions(extractionDirectory);
-      } catch (FileAlreadyExistsException ignored) {
-        // All is well
-      } catch (IOException e) {
-        throw new IOException("Failed to create directory for unpacked native library.", e);
-      }
-    } else {
-      log.debug("Native library {}: extraction directory {} already exists, using.", libraryName, extractionDirectory);
-    }
+	private Path prepareExtractionDirectory() throws IOException {
+		Path extractionDirectory = detectExtractionBaseDirectory().resolve(String.valueOf(System.currentTimeMillis()));
 
-    return extractionDirectory;
-  }
+		if (!Files.isDirectory(extractionDirectory)) {
+			log.debug("Native library {}: extraction directory {} does not exist, creating.", libraryName,
+					extractionDirectory);
 
-  private Path detectExtractionBaseDirectory() {
-    String explicitExtractionBase = properties.getExtractionPath();
+			try {
+				createDirectoriesWithFullPermissions(extractionDirectory);
+			} catch (FileAlreadyExistsException ignored) {
+				// All is well
+			} catch (IOException e) {
+				throw new IOException("Failed to create directory for unpacked native library.", e);
+			}
+		} else {
+			log.debug("Native library {}: extraction directory {} already exists, using.", libraryName, extractionDirectory);
+		}
 
-    if (explicitExtractionBase != null) {
-      log.debug("Native library {}: explicit extraction path provided - {}", libraryName, explicitExtractionBase);
-      return Paths.get(explicitExtractionBase).toAbsolutePath();
-    }
+		return extractionDirectory;
+	}
 
-    Path path = Paths.get(System.getProperty("java.io.tmpdir", "/tmp"), "lava-jni-natives")
-        .toAbsolutePath();
+	private Path detectExtractionBaseDirectory() {
+		String explicitExtractionBase = properties.getExtractionPath();
 
-    log.debug("Native library {}: detected {} as base directory for extraction.", libraryName, path);
-    return path;
-  }
+		if (explicitExtractionBase != null) {
+			log.debug("Native library {}: explicit extraction path provided - {}", libraryName, explicitExtractionBase);
+			return Paths.get(explicitExtractionBase).toAbsolutePath();
+		}
 
-  private SystemType detectMatchingSystemType() {
-    SystemType systemType;
+		Path path = Paths.get(System.getProperty("java.io.tmpdir", "/tmp"), "lava-jni-natives")
+				.toAbsolutePath();
 
-    try {
-      systemType = SystemType.detect(properties);
-    } catch (IllegalArgumentException e) {
-      if (systemFilter != null) {
-        log.info("Native library {}: could not detect sytem type, but system filter is {} - assuming it does " +
-            "not match and skipping library.", libraryName, systemFilter);
+		log.debug("Native library {}: detected {} as base directory for extraction.", libraryName, path);
+		return path;
+	}
 
-        return null;
-      } else {
-        throw e;
-      }
-    }
+	private SystemType detectMatchingSystemType() {
+		SystemType systemType;
 
-    if (systemFilter != null && !systemFilter.test(systemType)) {
-      log.debug("Native library {}: system filter does not match detected system {}, skipping", libraryName,
-          systemType.formatSystemName());
-      return null;
-    }
+		try {
+			systemType = SystemType.detect(properties);
+		} catch (IllegalArgumentException e) {
+			if (systemFilter != null) {
+				log.info("Native library {}: could not detect sytem type, but system filter is {} - assuming it does " +
+						"not match and skipping library.", libraryName, systemFilter);
 
-    return systemType;
-  }
+				return null;
+			} else {
+				throw e;
+			}
+		}
 
-  private static void createDirectoriesWithFullPermissions(Path path) throws IOException {
-    boolean isPosix = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+		if (systemFilter != null && !systemFilter.test(systemType)) {
+			log.debug("Native library {}: system filter does not match detected system {}, skipping", libraryName,
+					systemType.formatSystemName());
+			return null;
+		}
 
-    if (!isPosix) {
-      Files.createDirectories(path);
-    } else {
-      Files.createDirectories(path, asFileAttribute(fromString("rwxrwxrwx")));
-    }
-  }
+		return systemType;
+	}
 
-  private static class LoadResult {
-    public final boolean success;
-    public final RuntimeException exception;
+	private static class LoadResult {
+		public final boolean success;
+		public final RuntimeException exception;
 
-    private LoadResult(boolean success, RuntimeException exception) {
-      this.success = success;
-      this.exception = exception;
-    }
-  }
+		private LoadResult(boolean success, RuntimeException exception) {
+			this.success = success;
+			this.exception = exception;
+		}
+	}
 }

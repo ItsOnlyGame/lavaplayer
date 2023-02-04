@@ -7,19 +7,19 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 
 public class MessageOutput {
-  private final RemoteMessageMapper mapper;
-  private final DataOutputStream output;
+	private final RemoteMessageMapper mapper;
+	private final DataOutputStream output;
 
-  public MessageOutput(RemoteMessageMapper mapper, DataOutputStream output) {
-    this.mapper = mapper;
-    this.output = output;
-  }
+	public MessageOutput(RemoteMessageMapper mapper, DataOutputStream output) {
+		this.mapper = mapper;
+		this.output = output;
+	}
 
-  public void send(RemoteMessage message) {
-    try {
-      mapper.encode(output, message);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-  }
+	public void send(RemoteMessage message) {
+		try {
+			mapper.encode(output, message);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
 }

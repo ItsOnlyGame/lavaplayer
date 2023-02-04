@@ -8,6 +8,7 @@ import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrame;
 import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrameRebuilder;
 import com.sedmelluq.discord.lavaplayer.track.playback.AudioProcessingContext;
 import com.sedmelluq.discord.lavaplayer.track.playback.ImmutableAudioFrame;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
@@ -16,89 +17,90 @@ import java.nio.ShortBuffer;
  * A frame rebuilder to apply a specific volume level to the frames.
  */
 public class AudioFrameVolumeChanger implements AudioFrameRebuilder {
-  private final AudioConfiguration configuration;
-  private final AudioDataFormat format;
-  private final int newVolume;
-  private final ShortBuffer sampleBuffer;
-  private final PcmVolumeProcessor volumeProcessor;
+	private final AudioConfiguration configuration;
+	private final AudioDataFormat format;
+	private final int newVolume;
+	private final ShortBuffer sampleBuffer;
+	private final PcmVolumeProcessor volumeProcessor;
 
-  private AudioChunkEncoder encoder;
-  private AudioChunkDecoder decoder;
-  private int frameIndex;
+	private AudioChunkEncoder encoder;
+	private AudioChunkDecoder decoder;
+	private int frameIndex;
 
-  private AudioFrameVolumeChanger(AudioConfiguration configuration, AudioDataFormat format, int newVolume) {
-    this.configuration = configuration;
-    this.format = format;
-    this.newVolume = newVolume;
+	private AudioFrameVolumeChanger(AudioConfiguration configuration, AudioDataFormat format, int newVolume) {
+		this.configuration = configuration;
+		this.format = format;
+		this.newVolume = newVolume;
 
-    this.sampleBuffer = ByteBuffer
-        .allocateDirect(format.totalSampleCount() * 2)
-        .order(ByteOrder.nativeOrder())
-        .asShortBuffer();
-    this.volumeProcessor = new PcmVolumeProcessor(100);
-  }
+		this.sampleBuffer = ByteBuffer
+				.allocateDirect(format.totalSampleCount() * 2)
+				.order(ByteOrder.nativeOrder())
+				.asShortBuffer();
+		this.volumeProcessor = new PcmVolumeProcessor(100);
+	}
 
-  @Override
-  public AudioFrame rebuild(AudioFrame frame) {
-    if (frame.getVolume() == newVolume) {
-      return frame;
-    }
+	/**
+	 * Applies a volume level to the buffered frames of a frame consumer
+	 *
+	 * @param context Configuration and output information for processing
+	 */
+	public static void apply(AudioProcessingContext context) {
+		AudioFrameVolumeChanger volumeChanger = new AudioFrameVolumeChanger(context.configuration, context.outputFormat,
+				context.playerOptions.volumeLevel.get());
 
-    decoder.decode(frame.getData(), sampleBuffer);
+		try {
+			volumeChanger.setupLibraries();
+			context.frameBuffer.rebuild(volumeChanger);
+		} finally {
+			volumeChanger.clearLibraries();
+		}
+	}
 
-    int targetVolume = newVolume;
+	@Override
+	public AudioFrame rebuild(AudioFrame frame) {
+		if (frame.getVolume() == newVolume) {
+			return frame;
+		}
 
-    if (++frameIndex < 50) {
-      targetVolume = (int) ((newVolume - frame.getVolume()) * (frameIndex / 50.0) + frame.getVolume());
-    }
+		decoder.decode(frame.getData(), sampleBuffer);
 
-    // Volume 0 is stored in the frame with volume 100 buffer
-    if (targetVolume != 0) {
-      volumeProcessor.applyVolume(frame.getVolume(), targetVolume, sampleBuffer);
-    }
+		int targetVolume = newVolume;
 
-    byte[] bytes = encoder.encode(sampleBuffer);
+		if (++frameIndex < 50) {
+			targetVolume = (int) ((newVolume - frame.getVolume()) * (frameIndex / 50.0) + frame.getVolume());
+		}
 
-    // One frame per 20ms is consumed. To not spike the CPU usage, reencode only once per 5ms. By the time the buffer is
-    // fully rebuilt, it is probably near to 3/4 its maximum size.
-    try {
-      Thread.sleep(5);
-    } catch (InterruptedException e) {
-      // Keep it interrupted, it will trip on the next interruptible operation
-      Thread.currentThread().interrupt();
-    }
+		// Volume 0 is stored in the frame with volume 100 buffer
+		if (targetVolume != 0) {
+			volumeProcessor.applyVolume(frame.getVolume(), targetVolume, sampleBuffer);
+		}
 
-    return new ImmutableAudioFrame(frame.getTimecode(), bytes, targetVolume, format);
-  }
+		byte[] bytes = encoder.encode(sampleBuffer);
 
-  private void setupLibraries() {
-    encoder = format.createEncoder(configuration);
-    decoder = format.createDecoder();
-  }
+		// One frame per 20ms is consumed. To not spike the CPU usage, reencode only once per 5ms. By the time the buffer is
+		// fully rebuilt, it is probably near to 3/4 its maximum size.
+		try {
+			Thread.sleep(5);
+		} catch (InterruptedException e) {
+			// Keep it interrupted, it will trip on the next interruptible operation
+			Thread.currentThread().interrupt();
+		}
 
-  private void clearLibraries() {
-    if (encoder != null) {
-      encoder.close();
-    }
+		return new ImmutableAudioFrame(frame.getTimecode(), bytes, targetVolume, format);
+	}
 
-    if (decoder != null) {
-      decoder.close();
-    }
-  }
+	private void setupLibraries() {
+		encoder = format.createEncoder(configuration);
+		decoder = format.createDecoder();
+	}
 
-  /**
-   * Applies a volume level to the buffered frames of a frame consumer
-   * @param context Configuration and output information for processing
-   */
-  public static void apply(AudioProcessingContext context) {
-    AudioFrameVolumeChanger volumeChanger = new AudioFrameVolumeChanger(context.configuration, context.outputFormat,
-        context.playerOptions.volumeLevel.get());
+	private void clearLibraries() {
+		if (encoder != null) {
+			encoder.close();
+		}
 
-    try {
-      volumeChanger.setupLibraries();
-      context.frameBuffer.rebuild(volumeChanger);
-    } finally {
-      volumeChanger.clearLibraries();
-    }
-  }
+		if (decoder != null) {
+			decoder.close();
+		}
+	}
 }

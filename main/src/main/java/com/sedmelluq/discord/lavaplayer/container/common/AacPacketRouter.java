@@ -14,102 +14,100 @@ import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
 
 public class AacPacketRouter {
-  private static final Logger log = LoggerFactory.getLogger(AacPacketRouter.class);
+	private static final Logger log = LoggerFactory.getLogger(AacPacketRouter.class);
 
-  private final AudioProcessingContext context;
+	private final AudioProcessingContext context;
+	public AacDecoder nativeDecoder;
+	public Decoder embeddedDecoder;
+	private Long initialRequestedTimecode;
+	private Long initialProvidedTimecode;
+	private AudioPipeline downstream;
+	private ShortBuffer outputBuffer;
 
-  private Long initialRequestedTimecode;
-  private Long initialProvidedTimecode;
-  private AudioPipeline downstream;
-  private ShortBuffer outputBuffer;
+	public AacPacketRouter(AudioProcessingContext context) {
+		this.context = context;
+	}
 
-  public AacDecoder nativeDecoder;
-  public Decoder embeddedDecoder;
+	public void processInput(ByteBuffer inputBuffer) throws InterruptedException {
+		if (embeddedDecoder == null) {
+			nativeDecoder.fill(inputBuffer);
 
-  public AacPacketRouter(AudioProcessingContext context) {
-    this.context = context;
-  }
+			if (downstream == null) {
+				log.debug("Using native decoder");
+				AacDecoder.StreamInfo streamInfo = nativeDecoder.resolveStreamInfo();
 
-  public void processInput(ByteBuffer inputBuffer) throws InterruptedException {
-    if (embeddedDecoder == null) {
-      nativeDecoder.fill(inputBuffer);
+				if (streamInfo != null) {
+					downstream = AudioPipelineFactory.create(context, new PcmFormat(streamInfo.channels, streamInfo.sampleRate));
+					outputBuffer = ByteBuffer.allocateDirect(2 * streamInfo.frameSize * streamInfo.channels)
+							.order(ByteOrder.nativeOrder()).asShortBuffer();
 
-      if (downstream == null) {
-        log.debug("Using native decoder");
-        AacDecoder.StreamInfo streamInfo = nativeDecoder.resolveStreamInfo();
+					if (initialRequestedTimecode != null) {
+						downstream.seekPerformed(initialRequestedTimecode, initialProvidedTimecode);
+					}
+				}
+			}
 
-        if (streamInfo != null) {
-          downstream = AudioPipelineFactory.create(context, new PcmFormat(streamInfo.channels, streamInfo.sampleRate));
-          outputBuffer = ByteBuffer.allocateDirect(2 * streamInfo.frameSize * streamInfo.channels)
-              .order(ByteOrder.nativeOrder()).asShortBuffer();
+			if (downstream != null) {
+				while (nativeDecoder.decode(outputBuffer, false)) {
+					downstream.process(outputBuffer);
+					outputBuffer.clear();
+				}
+			}
+		} else {
+			if (downstream == null) {
+				log.debug("Using embedded decoder");
+				downstream = AudioPipelineFactory.create(context, new PcmFormat(
+						embeddedDecoder.getAudioFormat().getChannels(),
+						(int) embeddedDecoder.getAudioFormat().getSampleRate()
+				));
 
-          if (initialRequestedTimecode != null) {
-            downstream.seekPerformed(initialRequestedTimecode, initialProvidedTimecode);
-          }
-        }
-      }
+				if (initialRequestedTimecode != null) {
+					downstream.seekPerformed(initialRequestedTimecode, initialProvidedTimecode);
+				}
+			}
 
-      if (downstream != null) {
-        while (nativeDecoder.decode(outputBuffer, false)) {
-          downstream.process(outputBuffer);
-          outputBuffer.clear();
-        }
-      }
-    } else {
-      if (downstream == null) {
-        log.debug("Using embedded decoder");
-        downstream = AudioPipelineFactory.create(context, new PcmFormat(
-            embeddedDecoder.getAudioFormat().getChannels(),
-            (int) embeddedDecoder.getAudioFormat().getSampleRate()
-        ));
+			if (downstream != null) {
+				downstream.process(embeddedDecoder.decodeFrame(inputBuffer.array()));
+			}
+		}
+	}
 
-        if (initialRequestedTimecode != null) {
-          downstream.seekPerformed(initialRequestedTimecode, initialProvidedTimecode);
-        }
-      }
+	public void seekPerformed(long requestedTimecode, long providedTimecode) {
+		if (downstream != null) {
+			downstream.seekPerformed(requestedTimecode, providedTimecode);
+		} else {
+			this.initialRequestedTimecode = requestedTimecode;
+			this.initialProvidedTimecode = providedTimecode;
+		}
 
-      if (downstream != null) {
-        downstream.process(embeddedDecoder.decodeFrame(inputBuffer.array()));
-      }
-    }
-  }
+		if (nativeDecoder != null) {
+			nativeDecoder.close();
+			nativeDecoder = null;
+		} else if (embeddedDecoder != null) {
+			embeddedDecoder = null;
+		}
+	}
 
-  public void seekPerformed(long requestedTimecode, long providedTimecode) {
-    if (downstream != null) {
-      downstream.seekPerformed(requestedTimecode, providedTimecode);
-    } else {
-      this.initialRequestedTimecode = requestedTimecode;
-      this.initialProvidedTimecode = providedTimecode;
-    }
+	public void flush() throws InterruptedException {
+		if (downstream != null) {
+			while (nativeDecoder.decode(outputBuffer, true)) {
+				downstream.process(outputBuffer);
+				outputBuffer.clear();
+			}
+		}
+	}
 
-    if (nativeDecoder != null) {
-      nativeDecoder.close();
-      nativeDecoder = null;
-    } else if (embeddedDecoder != null) {
-      embeddedDecoder = null;
-    }
-  }
-
-  public void flush() throws InterruptedException {
-    if (downstream != null) {
-      while (nativeDecoder.decode(outputBuffer, true)) {
-        downstream.process(outputBuffer);
-        outputBuffer.clear();
-      }
-    }
-  }
-
-  public void close() {
-    try {
-      if (downstream != null) {
-        downstream.close();
-      }
-    } finally {
-      if (nativeDecoder != null) {
-        nativeDecoder.close();
-      } else if (embeddedDecoder != null) {
-        embeddedDecoder = null;
-      }
-    }
-  }
+	public void close() {
+		try {
+			if (downstream != null) {
+				downstream.close();
+			}
+		} finally {
+			if (nativeDecoder != null) {
+				nativeDecoder.close();
+			} else if (embeddedDecoder != null) {
+				embeddedDecoder = null;
+			}
+		}
+	}
 }

@@ -24,57 +24,57 @@ import static com.sedmelluq.discord.lavaplayer.integration.PlayerManagerTestTool
 
 @Timeout(30)
 class LocalFormatIntegrationTest extends Specification {
-  static AudioPlayerManager manager
-  static File temporaryDirectory
+    static AudioPlayerManager manager
+    static File temporaryDirectory
 
-  def setupSpec() {
-    manager = new DefaultAudioPlayerManager()
-    AudioSourceManagers.registerLocalSource(manager)
+    def setupSpec() {
+        manager = new DefaultAudioPlayerManager()
+        AudioSourceManagers.registerLocalSource(manager)
 
-    temporaryDirectory = Files.createTempDirectory('lavaplayer-test-samples').toFile()
+        temporaryDirectory = Files.createTempDirectory('lavaplayer-test-samples').toFile()
 
-    LocalFormatSampleIndex.SAMPLES.each {
-      new File(temporaryDirectory, it.filename).withOutputStream { out ->
-        LocalFormatIntegrationTest.class.getResourceAsStream("/test-samples/" + it.filename).withCloseable { input ->
-          IOUtils.copy(input, out)
+        LocalFormatSampleIndex.SAMPLES.each {
+            new File(temporaryDirectory, it.filename).withOutputStream { out ->
+                LocalFormatIntegrationTest.class.getResourceAsStream("/test-samples/" + it.filename).withCloseable { input ->
+                    IOUtils.copy(input, out)
+                }
+            }
         }
-      }
     }
-  }
 
-  def cleanupSpec() {
-    manager.shutdown()
+    def cleanupSpec() {
+        manager.shutdown()
 
-    temporaryDirectory.deleteDir()
-  }
+        temporaryDirectory.deleteDir()
+    }
 
-  @Unroll
-  def "decoding produces expected hash for #sample"(Sample sample) {
-    manager.configuration.outputFormat = new Pcm16AudioDataFormat(2, sample.getSampleRate(), 960, false)
-    AudioPlayer player = manager.createPlayer()
-    ByteBuffer buffer = ByteBuffer.allocate(960 * 2 * 2)
+    @Unroll
+    def "decoding produces expected hash for #sample"(Sample sample) {
+        manager.configuration.outputFormat = new Pcm16AudioDataFormat(2, sample.getSampleRate(), 960, false)
+        AudioPlayer player = manager.createPlayer()
+        ByteBuffer buffer = ByteBuffer.allocate(960 * 2 * 2)
 
-    MutableAudioFrame frame = new MutableAudioFrame()
-    frame.setBuffer(buffer)
+        MutableAudioFrame frame = new MutableAudioFrame()
+        frame.setBuffer(buffer)
 
-    List<AudioEvent> events = []
+        List<AudioEvent> events = []
 
-    player.addListener(new AudioEventListener() {
-      @Override
-      void onEvent(AudioEvent event) {
-        events.add(event)
-      }
-    })
+        player.addListener(new AudioEventListener() {
+            @Override
+            void onEvent(AudioEvent event) {
+                events.add(event)
+            }
+        })
 
-    player.playTrack(loadTrack(manager, temporaryDirectory.absolutePath + "/" + sample.filename))
+        player.playTrack(loadTrack(manager, temporaryDirectory.absolutePath + "/" + sample.filename))
 
-    expect:
-    sample.validCrcs.contains(consumeTrack(player))
-    events.size() == 2
-    events.get(0) instanceof TrackStartEvent
-    events.get(1) instanceof TrackEndEvent
+        expect:
+        sample.validCrcs.contains(consumeTrack(player))
+        events.size() == 2
+        events.get(0) instanceof TrackStartEvent
+        events.get(1) instanceof TrackEndEvent
 
-    where:
-    sample << LocalFormatSampleIndex.SAMPLES
-  }
+        where:
+        sample << LocalFormatSampleIndex.SAMPLES
+    }
 }

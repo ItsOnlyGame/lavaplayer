@@ -30,168 +30,172 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.sedmelluq.discord.lavaplayer.source.twitch.TwitchConstants.ACCESS_TOKEN_PAYLOAD;
-import static com.sedmelluq.discord.lavaplayer.source.twitch.TwitchConstants.DEFAULT_CLIENT_ID;
-import static com.sedmelluq.discord.lavaplayer.source.twitch.TwitchConstants.METADATA_PAYLOAD;
-import static com.sedmelluq.discord.lavaplayer.source.twitch.TwitchConstants.TWITCH_GRAPHQL_BASE_URL;
+import static com.sedmelluq.discord.lavaplayer.source.twitch.TwitchConstants.*;
 import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.SUSPICIOUS;
 
 /**
  * Audio source manager which detects Twitch tracks by URL.
  */
 public class TwitchStreamAudioSourceManager implements AudioSourceManager, HttpConfigurable {
-  private static final String STREAM_NAME_REGEX = "^https://(?:www\\.|go\\.|m\\.)?twitch.tv/([^/]+)$";
-  private static final Pattern streamNameRegex = Pattern.compile(STREAM_NAME_REGEX);
+	private static final String STREAM_NAME_REGEX = "^https://(?:www\\.|go\\.|m\\.)?twitch.tv/([^/]+)$";
+	private static final Pattern streamNameRegex = Pattern.compile(STREAM_NAME_REGEX);
 
-  private final HttpInterfaceManager httpInterfaceManager;
-  private final String twitchClientId;
+	private final HttpInterfaceManager httpInterfaceManager;
+	private final String twitchClientId;
 
-  /**
-   * Create an instance.
-   */
-  public TwitchStreamAudioSourceManager() { this(DEFAULT_CLIENT_ID); }
+	/**
+	 * Create an instance.
+	 */
+	public TwitchStreamAudioSourceManager() {
+		this(DEFAULT_CLIENT_ID);
+	}
 
-  /**
-   * Create an instance.
-   * @param clientId The Twitch client id for your application.
-   */
-  public TwitchStreamAudioSourceManager(String clientId) {
-    httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager();
-    twitchClientId = clientId;
-  }
+	/**
+	 * Create an instance.
+	 *
+	 * @param clientId The Twitch client id for your application.
+	 */
+	public TwitchStreamAudioSourceManager(String clientId) {
+		httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager();
+		twitchClientId = clientId;
+	}
 
-  public String getClientId() {
-    return twitchClientId;
-  }
+	/**
+	 * Extract channel identifier from a channel URL.
+	 *
+	 * @param url Channel URL
+	 * @return Channel identifier (for API requests)
+	 */
+	public static String getChannelIdentifierFromUrl(String url) {
+		Matcher matcher = streamNameRegex.matcher(url);
+		if (!matcher.matches()) {
+			return null;
+		}
 
-  @Override
-  public String getSourceName() {
-    return "twitch";
-  }
+		return matcher.group(1);
+	}
 
-  @Override
-  public AudioItem loadItem(AudioPlayerManager manager, AudioReference reference) {
-    String streamName = getChannelIdentifierFromUrl(reference.identifier);
-    if (streamName == null) {
-      return null;
-    }
+	private static HttpUriRequest addClientHeaders(HttpUriRequest request, String clientId) {
+		request.setHeader("Client-ID", clientId);
+		return request;
+	}
 
-    JsonBrowser accessToken = fetchAccessToken(streamName);
+	public String getClientId() {
+		return twitchClientId;
+	}
 
-    if (accessToken == null || accessToken.get("data").get("streamPlaybackAccessToken").get("value").isNull()) {
-      return AudioReference.NO_TRACK;
-    }
+	@Override
+	public String getSourceName() {
+		return "twitch";
+	}
 
-    JsonBrowser channelInfo = fetchStreamChannelInfo(streamName).get("data").get("user");
+	@Override
+	public AudioItem loadItem(AudioPlayerManager manager, AudioReference reference) {
+		String streamName = getChannelIdentifierFromUrl(reference.identifier);
+		if (streamName == null) {
+			return null;
+		}
 
-    if (channelInfo == null || channelInfo.get("stream").get("type").isNull()) {
-      return AudioReference.NO_TRACK;
-    } else {
-      String displayName = streamName;
-      String title = channelInfo.get("lastBroadcast").get("title").text();
+		JsonBrowser accessToken = fetchAccessToken(streamName);
 
-      return new TwitchStreamAudioTrack(new AudioTrackInfo(
-          title,
-          displayName,
-          Units.DURATION_MS_UNKNOWN,
-          reference.identifier,
-          true,
-          reference.identifier
-      ), this);
-    }
-  }
+		if (accessToken == null || accessToken.get("data").get("streamPlaybackAccessToken").get("value").isNull()) {
+			return AudioReference.NO_TRACK;
+		}
 
-  @Override
-  public boolean isTrackEncodable(AudioTrack track) {
-    return true;
-  }
+		JsonBrowser channelInfo = fetchStreamChannelInfo(streamName).get("data").get("user");
 
-  @Override
-  public void encodeTrack(AudioTrack track, DataOutput output) throws IOException {
-    // Nothing special to do, URL (identifier) is enough
-  }
+		if (channelInfo == null || channelInfo.get("stream").get("type").isNull()) {
+			return AudioReference.NO_TRACK;
+		} else {
+			String displayName = streamName;
+			String title = channelInfo.get("lastBroadcast").get("title").text();
 
-  @Override
-  public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) throws IOException {
-    return new TwitchStreamAudioTrack(trackInfo, this);
-  }
+			final String thumbnail = channelInfo.get("profileImageURL").text().replaceFirst("-70x70", "-300x300");
 
-  /**
-   * Extract channel identifier from a channel URL.
-   * @param url Channel URL
-   * @return Channel identifier (for API requests)
-   */
-  public static String getChannelIdentifierFromUrl(String url) {
-    Matcher matcher = streamNameRegex.matcher(url);
-    if (!matcher.matches()) {
-      return null;
-    }
+			return new TwitchStreamAudioTrack(new AudioTrackInfo(
+					title,
+					displayName,
+					Units.DURATION_MS_UNKNOWN,
+					reference.identifier,
+					true,
+					reference.identifier,
+					thumbnail
+			), this);
+		}
+	}
 
-    return matcher.group(1);
-  }
+	@Override
+	public boolean isTrackEncodable(AudioTrack track) {
+		return true;
+	}
 
-  /**
-   * @param url Request URL
-   * @return Request with necessary headers attached.
-   */
-  public HttpUriRequest createGetRequest(String url) {
-    return addClientHeaders(new HttpGet(url), twitchClientId);
-  }
+	@Override
+	public void encodeTrack(AudioTrack track, DataOutput output) throws IOException {
+		// Nothing special to do, URL (identifier) is enough
+	}
 
-  /**
-   * @param url Request URL
-   * @return Request with necessary headers attached.
-   */
-  public HttpUriRequest createGetRequest(URI url) {
-    return addClientHeaders(new HttpGet(url), twitchClientId);
-  }
+	@Override
+	public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) throws IOException {
+		return new TwitchStreamAudioTrack(trackInfo, this);
+	}
 
-  /**
-   * @return Get an HTTP interface for a playing track.
-   */
-  public HttpInterface getHttpInterface() {
-    return httpInterfaceManager.getInterface();
-  }
+	/**
+	 * @param url Request URL
+	 * @return Request with necessary headers attached.
+	 */
+	public HttpUriRequest createGetRequest(String url) {
+		return addClientHeaders(new HttpGet(url), twitchClientId);
+	}
 
-  @Override
-  public void configureRequests(Function<RequestConfig, RequestConfig> configurator) {
-    httpInterfaceManager.configureRequests(configurator);
-  }
+	/**
+	 * @param url Request URL
+	 * @return Request with necessary headers attached.
+	 */
+	public HttpUriRequest createGetRequest(URI url) {
+		return addClientHeaders(new HttpGet(url), twitchClientId);
+	}
 
-  @Override
-  public void configureBuilder(Consumer<HttpClientBuilder> configurator) {
-    httpInterfaceManager.configureBuilder(configurator);
-  }
+	/**
+	 * @return Get an HTTP interface for a playing track.
+	 */
+	public HttpInterface getHttpInterface() {
+		return httpInterfaceManager.getInterface();
+	}
 
-  private static HttpUriRequest addClientHeaders(HttpUriRequest request, String clientId) {
-    request.setHeader("Client-ID", clientId);
-    return request;
-  }
+	@Override
+	public void configureRequests(Function<RequestConfig, RequestConfig> configurator) {
+		httpInterfaceManager.configureRequests(configurator);
+	}
 
-  private JsonBrowser fetchAccessToken(String name) {
-    try (HttpInterface httpInterface = getHttpInterface()) {
-      HttpPost post = new HttpPost(TWITCH_GRAPHQL_BASE_URL);
-      addClientHeaders(post, DEFAULT_CLIENT_ID);
-      post.setEntity(new StringEntity(String.format(ACCESS_TOKEN_PAYLOAD, name)));
-      return HttpClientTools.fetchResponseAsJson(httpInterface, post);
-    } catch (IOException e) {
-      throw new FriendlyException("Loading Twitch channel access token failed.", SUSPICIOUS, e);
-    }
-  }
+	@Override
+	public void configureBuilder(Consumer<HttpClientBuilder> configurator) {
+		httpInterfaceManager.configureBuilder(configurator);
+	}
 
-  private JsonBrowser fetchStreamChannelInfo(String channelId) {
-    try (HttpInterface httpInterface = getHttpInterface()) {
-      HttpPost post = new HttpPost(TWITCH_GRAPHQL_BASE_URL);
-      addClientHeaders(post, DEFAULT_CLIENT_ID);
-      post.setEntity(new StringEntity(String.format(METADATA_PAYLOAD, channelId)));
-      return HttpClientTools.fetchResponseAsJson(httpInterface, post);
-    } catch (IOException e) {
-      throw new FriendlyException("Loading Twitch channel information failed.", SUSPICIOUS, e);
-    }
-  }
+	private JsonBrowser fetchAccessToken(String name) {
+		try (HttpInterface httpInterface = getHttpInterface()) {
+			HttpPost post = new HttpPost(TWITCH_GRAPHQL_BASE_URL);
+			addClientHeaders(post, DEFAULT_CLIENT_ID);
+			post.setEntity(new StringEntity(String.format(ACCESS_TOKEN_PAYLOAD, name)));
+			return HttpClientTools.fetchResponseAsJson(httpInterface, post);
+		} catch (IOException e) {
+			throw new FriendlyException("Loading Twitch channel access token failed.", SUSPICIOUS, e);
+		}
+	}
 
-  @Override
-  public void shutdown() {
-    ExceptionTools.closeWithWarnings(httpInterfaceManager);
-  }
+	private JsonBrowser fetchStreamChannelInfo(String channelId) {
+		try (HttpInterface httpInterface = getHttpInterface()) {
+			HttpPost post = new HttpPost(TWITCH_GRAPHQL_BASE_URL);
+			addClientHeaders(post, DEFAULT_CLIENT_ID);
+			post.setEntity(new StringEntity(String.format(METADATA_PAYLOAD, channelId)));
+			return HttpClientTools.fetchResponseAsJson(httpInterface, post);
+		} catch (IOException e) {
+			throw new FriendlyException("Loading Twitch channel information failed.", SUSPICIOUS, e);
+		}
+	}
+
+	@Override
+	public void shutdown() {
+		ExceptionTools.closeWithWarnings(httpInterfaceManager);
+	}
 }
