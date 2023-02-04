@@ -3,7 +3,7 @@ plugins {
     `maven-publish`
 }
 
-group = "com.sedmelluq"
+group = "com.iog"
 
 allprojects {
     group = rootProject.group
