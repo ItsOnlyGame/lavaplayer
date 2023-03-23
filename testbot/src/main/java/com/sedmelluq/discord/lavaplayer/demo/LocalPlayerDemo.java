@@ -30,8 +30,9 @@ public class LocalPlayerDemo {
 		manager.getConfiguration().setOutputFormat(COMMON_PCM_S16_BE);
 
 		AudioPlayer player = manager.createPlayer();
+		player.setVolume(50);
 
-		manager.loadItem("spsearch: Running with the wolves", new FunctionalResultHandler(null, playlist -> {
+		manager.loadItem("spsearch: Ambulance June", new FunctionalResultHandler(null, playlist -> {
 			player.playTrack(playlist.getTracks().get(0));
 		}, null, null));
 
