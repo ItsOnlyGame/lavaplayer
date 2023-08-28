@@ -8,17 +8,11 @@ import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpConfigurable;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterfaceManager;
-import com.sedmelluq.discord.lavaplayer.track.*;
-import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.utils.URIBuilder;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.util.EntityUtils;
-
+import com.sedmelluq.discord.lavaplayer.track.AudioItem;
+import com.sedmelluq.discord.lavaplayer.track.AudioReference;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
+import com.sedmelluq.discord.lavaplayer.track.BasicAudioPlaylist;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
@@ -31,6 +25,15 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 
 import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.COMMON;
 import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.SUSPICIOUS;
@@ -39,401 +42,409 @@ import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.
  * Audio source manager that implements finding SoundCloud tracks based on URL.
  */
 public class SoundCloudAudioSourceManager implements AudioSourceManager, HttpConfigurable {
-	private static final int DEFAULT_SEARCH_RESULTS = 10;
-	private static final int MAXIMUM_SEARCH_RESULTS = 200;
+  private static final int DEFAULT_SEARCH_RESULTS = 10;
+  private static final int MAXIMUM_SEARCH_RESULTS = 200;
 
-	private static final String MOBILE_URL_REGEX = "^(?:http://|https://|)soundcloud\\.app\\.goo\\.gl/([a-zA-Z0-9-_]+)/?(?:\\?.*|)$";
-	private static final String TRACK_URL_REGEX = "^(?:http://|https://|)(?:www\\.|)(?:m\\.|)soundcloud\\.com/([a-zA-Z0-9-_]+)/([a-zA-Z0-9-_]+)/?(?:\\?.*|)$";
-	private static final String UNLISTED_URL_REGEX = "^(?:http://|https://|)(?:www\\.|)(?:m\\.|)soundcloud\\.com/([a-zA-Z0-9-_]+)/([a-zA-Z0-9-_]+)/s-([a-zA-Z0-9-_]+)(?:\\?.*|)$";
-	private static final String LIKED_URL_REGEX = "^(?:http://|https://|)(?:www\\.|)(?:m\\.|)soundcloud\\.com/([a-zA-Z0-9-_]+)/likes/?(?:\\?.*|)$";
-	private static final String LIKED_USER_URN_REGEX = "\"urn\":\"soundcloud:users:([0-9]+)\",\"username\":\"([^\"]+)\"";
-	private static final String SEARCH_PREFIX = "scsearch";
-	private static final String SEARCH_PREFIX_DEFAULT = "scsearch:";
-	private static final String SEARCH_REGEX = SEARCH_PREFIX + "\\[([0-9]{1,9}),([0-9]{1,9})\\]:\\s*(.*)\\s*";
-	private static final Pattern searchPattern = Pattern.compile(SEARCH_REGEX);
-	private static final Pattern mobileUrlPattern = Pattern.compile(MOBILE_URL_REGEX);
-	private static final Pattern trackUrlPattern = Pattern.compile(TRACK_URL_REGEX);
-	private static final Pattern unlistedUrlPattern = Pattern.compile(UNLISTED_URL_REGEX);
-	private static final Pattern likedUrlPattern = Pattern.compile(LIKED_URL_REGEX);
-	private static final Pattern likedUserUrnPattern = Pattern.compile(LIKED_USER_URN_REGEX);
-	private final SoundCloudDataReader dataReader;
-	private final SoundCloudDataLoader dataLoader;
-	private final SoundCloudFormatHandler formatHandler;
-	private final SoundCloudPlaylistLoader playlistLoader;
-	private final HttpInterfaceManager httpInterfaceManager;
-	private final SoundCloudClientIdTracker clientIdTracker;
-	private final boolean allowSearch;
+  private static final String MOBILE_URL_REGEX = "^(?:http://|https://|)soundcloud\\.app\\.goo\\.gl/([a-zA-Z0-9-_]+)/?(?:\\?.*|)$";
+  private static final String TRACK_URL_REGEX = "^(?:http://|https://|)(?:www\\.|)(?:m\\.|)soundcloud\\.com/([a-zA-Z0-9-_]+)/([a-zA-Z0-9-_]+)/?(?:\\?.*|)$";
+  private static final String SHORT_TRACK_URL_REGEX = "^https://on.soundcloud\\.com/[a-zA-Z0-9-_]+/?(?:\\?.*|)$";
+  private static final String UNLISTED_URL_REGEX = "^(?:http://|https://|)(?:www\\.|)(?:m\\.|)soundcloud\\.com/([a-zA-Z0-9-_]+)/([a-zA-Z0-9-_]+)/s-([a-zA-Z0-9-_]+)(?:\\?.*|)$";
+  private static final String LIKED_URL_REGEX = "^(?:http://|https://|)(?:www\\.|)(?:m\\.|)soundcloud\\.com/([a-zA-Z0-9-_]+)/likes/?(?:\\?.*|)$";
+  private static final String LIKED_USER_URN_REGEX = "\"urn\":\"soundcloud:users:([0-9]+)\",\"username\":\"([^\"]+)\"";
+  private static final String SEARCH_PREFIX = "scsearch";
+  private static final String SEARCH_PREFIX_DEFAULT = "scsearch:";
+  private static final String SEARCH_REGEX = SEARCH_PREFIX + "\\[([0-9]{1,9}),([0-9]{1,9})\\]:\\s*(.*)\\s*";
 
-	/**
-	 * Create an instance.
-	 *
-	 * @param allowSearch Whether to allow search queries as identifiers
-	 */
-	public SoundCloudAudioSourceManager(
-			boolean allowSearch,
-			SoundCloudDataReader dataReader,
-			SoundCloudDataLoader dataLoader,
-			SoundCloudFormatHandler formatHandler,
-			SoundCloudPlaylistLoader playlistLoader
-	) {
-		this.allowSearch = allowSearch;
-		this.dataReader = dataReader;
-		this.dataLoader = dataLoader;
-		this.formatHandler = formatHandler;
-		this.playlistLoader = playlistLoader;
+  private static final Pattern mobileUrlPattern = Pattern.compile(MOBILE_URL_REGEX);
+  private static final Pattern trackUrlPattern = Pattern.compile(TRACK_URL_REGEX);
+  private static final Pattern shortTrackUrlPattern = Pattern.compile(SHORT_TRACK_URL_REGEX);
+  private static final Pattern unlistedUrlPattern = Pattern.compile(UNLISTED_URL_REGEX);
+  private static final Pattern likedUrlPattern = Pattern.compile(LIKED_URL_REGEX);
+  private static final Pattern likedUserUrnPattern = Pattern.compile(LIKED_USER_URN_REGEX);
+  private static final Pattern searchPattern = Pattern.compile(SEARCH_REGEX);
 
-		httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager();
-		clientIdTracker = new SoundCloudClientIdTracker(httpInterfaceManager);
-		httpInterfaceManager.setHttpContextFilter(new SoundCloudHttpContextFilter(clientIdTracker));
-	}
+  private final SoundCloudDataReader dataReader;
+  private final SoundCloudDataLoader dataLoader;
+  private final SoundCloudFormatHandler formatHandler;
+  private final SoundCloudPlaylistLoader playlistLoader;
+  private final HttpInterfaceManager httpInterfaceManager;
+  private final SoundCloudClientIdTracker clientIdTracker;
+  private final boolean allowSearch;
 
-	public static SoundCloudAudioSourceManager createDefault() {
-		SoundCloudDataReader dataReader = new DefaultSoundCloudDataReader();
-		SoundCloudDataLoader dataLoader = new DefaultSoundCloudDataLoader();
-		SoundCloudFormatHandler formatHandler = new DefaultSoundCloudFormatHandler();
+  public static SoundCloudAudioSourceManager createDefault() {
+    SoundCloudDataReader dataReader = new DefaultSoundCloudDataReader();
+    SoundCloudDataLoader dataLoader = new DefaultSoundCloudDataLoader();
+    SoundCloudFormatHandler formatHandler = new DefaultSoundCloudFormatHandler();
 
-		return new SoundCloudAudioSourceManager(true, dataReader, dataLoader, formatHandler,
-				new DefaultSoundCloudPlaylistLoader(dataLoader, dataReader, formatHandler));
-	}
+    return new SoundCloudAudioSourceManager(true, dataReader, dataLoader, formatHandler,
+        new DefaultSoundCloudPlaylistLoader(dataLoader, dataReader, formatHandler));
+  }
 
-	public static Builder builder() {
-		return new Builder();
-	}
+  public static Builder builder() {
+    return new Builder();
+  }
 
-	public SoundCloudFormatHandler getFormatHandler() {
-		return formatHandler;
-	}
+  /**
+   * Create an instance.
+   * @param allowSearch Whether to allow search queries as identifiers
+   */
+  public SoundCloudAudioSourceManager(
+      boolean allowSearch,
+      SoundCloudDataReader dataReader,
+      SoundCloudDataLoader dataLoader,
+      SoundCloudFormatHandler formatHandler,
+      SoundCloudPlaylistLoader playlistLoader
+  ) {
+    this.allowSearch = allowSearch;
+    this.dataReader = dataReader;
+    this.dataLoader = dataLoader;
+    this.formatHandler = formatHandler;
+    this.playlistLoader = playlistLoader;
 
-	@Override
-	public String getSourceName() {
-		return "soundcloud";
-	}
+    httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager();
+    clientIdTracker = new SoundCloudClientIdTracker(httpInterfaceManager);
+    httpInterfaceManager.setHttpContextFilter(new SoundCloudHttpContextFilter(clientIdTracker));
+  }
 
-	@Override
-	public AudioItem loadItem(AudioPlayerManager manager, AudioReference reference) {
-		Matcher mobileUrlMatcher = mobileUrlPattern.matcher(reference.identifier);
-		if (mobileUrlMatcher.matches()) {
-			reference = SoundCloudHelper.redirectMobileLink(httpInterfaceManager.getInterface(), reference);
-		}
+  public SoundCloudFormatHandler getFormatHandler() {
+    return formatHandler;
+  }
 
-		AudioItem track = processAsSingleTrack(reference);
+  @Override
+  public String getSourceName() {
+    return "soundcloud";
+  }
 
-		if (track == null) {
-			track = playlistLoader.load(reference.identifier, httpInterfaceManager, this::buildTrackFromInfo);
-		}
+  @Override
+  public AudioItem loadItem(AudioPlayerManager manager, AudioReference reference) {
+    Matcher mobileUrlMatcher = mobileUrlPattern.matcher(reference.identifier);
+    if (mobileUrlMatcher.matches()) {
+      reference = SoundCloudHelper.redirectMobileLink(httpInterfaceManager.getInterface(), reference);
+    }
 
-		if (track == null) {
-			track = processAsLikedTracks(reference);
-		}
+    Matcher shortTrackMatcher = shortTrackUrlPattern.matcher(reference.identifier);
+    if (shortTrackMatcher.matches()) {
+      reference = SoundCloudHelper.resolveShortTrackUrl(httpInterfaceManager.getInterface(), reference);
+    }
 
-		if (track == null && allowSearch) {
-			track = processAsSearchQuery(reference);
-		}
+    AudioItem track = processAsSingleTrack(reference);
 
-		return track;
-	}
+    if (track == null) {
+      track = playlistLoader.load(reference.identifier, httpInterfaceManager, this::buildTrackFromInfo);
+    }
 
-	@Override
-	public boolean isTrackEncodable(AudioTrack track) {
-		return true;
-	}
+    if (track == null) {
+      track = processAsLikedTracks(reference);
+    }
 
-	@Override
-	public void encodeTrack(AudioTrack track, DataOutput output) {
-		// No extra information to save
-	}
+    if (track == null && allowSearch) {
+      track = processAsSearchQuery(reference);
+    }
 
-	@Override
-	public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) {
-		return new SoundCloudAudioTrack(trackInfo, this);
-	}
+    return track;
+  }
 
-	@Override
-	public void shutdown() {
-		// Nothing to shut down
-	}
+  @Override
+  public boolean isTrackEncodable(AudioTrack track) {
+    return true;
+  }
 
-	public String getClientId() {
-		return clientIdTracker.getClientId();
-	}
+  @Override
+  public void encodeTrack(AudioTrack track, DataOutput output) {
+    // No extra information to save
+  }
 
-	/**
-	 * @return Get an HTTP interface for a playing track.
-	 */
-	public HttpInterface getHttpInterface() {
-		return httpInterfaceManager.getInterface();
-	}
+  @Override
+  public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) {
+    return new SoundCloudAudioTrack(trackInfo, this);
+  }
 
-	@Override
-	public void configureRequests(Function<RequestConfig, RequestConfig> configurator) {
-		httpInterfaceManager.configureRequests(configurator);
-	}
+  @Override
+  public void shutdown() {
+    // Nothing to shut down
+  }
 
-	@Override
-	public void configureBuilder(Consumer<HttpClientBuilder> configurator) {
-		httpInterfaceManager.configureBuilder(configurator);
-	}
+  public String getClientId() {
+    return clientIdTracker.getClientId();
+  }
 
-	private AudioTrack processAsSingleTrack(AudioReference reference) {
-		String url = SoundCloudHelper.nonMobileUrl(reference.identifier);
+  /**
+   * @return Get an HTTP interface for a playing track.
+   */
+  public HttpInterface getHttpInterface() {
+    return httpInterfaceManager.getInterface();
+  }
 
-		Matcher trackUrlMatcher = trackUrlPattern.matcher(url);
-		if (trackUrlMatcher.matches() && !"likes".equals(trackUrlMatcher.group(2))) {
-			return loadTrack(url);
-		}
+  @Override
+  public void configureRequests(Function<RequestConfig, RequestConfig> configurator) {
+    httpInterfaceManager.configureRequests(configurator);
+  }
 
-		Matcher unlistedUrlMatcher = unlistedUrlPattern.matcher(url);
-		if (unlistedUrlMatcher.matches()) {
-			return loadTrack(url);
-		}
+  @Override
+  public void configureBuilder(Consumer<HttpClientBuilder> configurator) {
+    httpInterfaceManager.configureBuilder(configurator);
+  }
 
-		return null;
-	}
+  private AudioTrack processAsSingleTrack(AudioReference reference) {
+    String url = SoundCloudHelper.nonMobileUrl(reference.identifier);
 
-	private AudioItem processAsLikedTracks(AudioReference reference) {
-		String url = SoundCloudHelper.nonMobileUrl(reference.identifier);
+    Matcher trackUrlMatcher = trackUrlPattern.matcher(url);
+    if (trackUrlMatcher.matches() && !"likes".equals(trackUrlMatcher.group(2))) {
+      return loadTrack(url);
+    }
 
-		if (likedUrlPattern.matcher(url).matches()) {
-			return loadFromLikedTracks(url);
-		} else {
-			return null;
-		}
-	}
+    Matcher unlistedUrlMatcher = unlistedUrlPattern.matcher(url);
+    if (unlistedUrlMatcher.matches()) {
+      return loadTrack(url);
+    }
 
-	public AudioTrack loadTrack(String trackWebUrl) {
-		try (HttpInterface httpInterface = getHttpInterface()) {
-			JsonBrowser rootData = dataLoader.load(httpInterface, trackWebUrl);
-			JsonBrowser trackData = dataReader.findTrackData(rootData);
+    return null;
+  }
 
-			if (trackData == null) {
-				throw new FriendlyException("This track is not available", COMMON, null);
-			}
+  private AudioItem processAsLikedTracks(AudioReference reference) {
+    String url = SoundCloudHelper.nonMobileUrl(reference.identifier);
 
-			return loadFromTrackData(trackData);
-		} catch (IOException e) {
-			throw new FriendlyException("Loading track from SoundCloud failed.", SUSPICIOUS, e);
-		}
-	}
+    if (likedUrlPattern.matcher(url).matches()) {
+      return loadFromLikedTracks(url);
+    } else {
+      return null;
+    }
+  }
 
-	protected AudioTrack loadFromTrackData(JsonBrowser trackData) {
-		SoundCloudTrackFormat format = formatHandler.chooseBestFormat(dataReader.readTrackFormats(trackData));
-		return buildTrackFromInfo(dataReader.readTrackInfo(trackData, formatHandler.buildFormatIdentifier(format)));
-	}
+  public AudioTrack loadTrack(String trackWebUrl) {
+    try (HttpInterface httpInterface = getHttpInterface()) {
+      JsonBrowser rootData = dataLoader.load(httpInterface, trackWebUrl);
+      JsonBrowser trackData = dataReader.findTrackData(rootData);
 
-	private AudioTrack buildTrackFromInfo(AudioTrackInfo trackInfo) {
-		return new SoundCloudAudioTrack(trackInfo, this);
-	}
+      if (trackData == null) {
+        throw new FriendlyException("This track is not available", COMMON, null);
+      }
 
-	private AudioItem loadFromLikedTracks(String likedListUrl) {
-		try (HttpInterface httpInterface = getHttpInterface()) {
-			UserInfo userInfo = findUserIdFromLikedList(httpInterface, likedListUrl);
-			if (userInfo == null) {
-				return AudioReference.NO_TRACK;
-			}
+      return loadFromTrackData(trackData);
+    } catch (IOException e) {
+      throw new FriendlyException("Loading track from SoundCloud failed.", SUSPICIOUS, e);
+    }
+  }
 
-			return extractTracksFromLikedList(loadLikedListForUserId(httpInterface, userInfo), userInfo, likedListUrl);
+  protected AudioTrack loadFromTrackData(JsonBrowser trackData) {
+    SoundCloudTrackFormat format = formatHandler.chooseBestFormat(dataReader.readTrackFormats(trackData));
+    return buildTrackFromInfo(dataReader.readTrackInfo(trackData, formatHandler.buildFormatIdentifier(format)));
+  }
+
+  private AudioTrack buildTrackFromInfo(AudioTrackInfo trackInfo) {
+    return new SoundCloudAudioTrack(trackInfo, this);
+  }
+
+  private AudioItem loadFromLikedTracks(String likedListUrl) {
+    try (HttpInterface httpInterface = getHttpInterface()) {
+      UserInfo userInfo = findUserIdFromLikedList(httpInterface, likedListUrl);
+      if (userInfo == null) {
+        return AudioReference.NO_TRACK;
+      }
+
+      return extractTracksFromLikedList(loadLikedListForUserId(httpInterface, userInfo), userInfo, likedListUrl);
 		} catch (IOException e) {
 			throw new FriendlyException("Loading liked tracks from SoundCloud failed.", SUSPICIOUS, e);
 		}
 	}
 
-	private UserInfo findUserIdFromLikedList(HttpInterface httpInterface, String likedListUrl) throws IOException {
-		try (CloseableHttpResponse response = httpInterface.execute(new HttpGet(likedListUrl))) {
-			int statusCode = response.getStatusLine().getStatusCode();
+  private UserInfo findUserIdFromLikedList(HttpInterface httpInterface, String likedListUrl) throws IOException {
+    try (CloseableHttpResponse response = httpInterface.execute(new HttpGet(likedListUrl))) {
+      int statusCode = response.getStatusLine().getStatusCode();
 
-			if (statusCode == HttpStatus.SC_NOT_FOUND) {
-				return null;
-			} else if (!HttpClientTools.isSuccessWithContent(statusCode)) {
-				throw new IOException("Invalid status code for track list response: " + statusCode);
-			}
+      if (statusCode == HttpStatus.SC_NOT_FOUND) {
+        return null;
+      } else if (!HttpClientTools.isSuccessWithContent(statusCode)) {
+        throw new IOException("Invalid status code for track list response: " + statusCode);
+      }
 
-			Matcher matcher = likedUserUrnPattern.matcher(IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8));
-			return matcher.find() ? new UserInfo(matcher.group(1), matcher.group(2)) : null;
-		}
-	}
+      Matcher matcher = likedUserUrnPattern.matcher(IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8));
+      return matcher.find() ? new UserInfo(matcher.group(1), matcher.group(2)) : null;
+    }
+  }
 
-	private JsonBrowser loadLikedListForUserId(HttpInterface httpInterface, UserInfo userInfo) throws IOException {
-		URI uri = URI.create("https://api-v2.soundcloud.com/users/" + userInfo.id + "/likes?limit=200&offset=0");
+  private JsonBrowser loadLikedListForUserId(HttpInterface httpInterface, UserInfo userInfo) throws IOException {
+    URI uri = URI.create("https://api-v2.soundcloud.com/users/" + userInfo.id + "/likes?limit=200&offset=0");
 
-		try (CloseableHttpResponse response = httpInterface.execute(new HttpGet(uri))) {
-			HttpClientTools.assertSuccessWithContent(response, "liked tracks response");
-			return JsonBrowser.parse(response.getEntity().getContent());
-		}
-	}
+    try (CloseableHttpResponse response = httpInterface.execute(new HttpGet(uri))) {
+      HttpClientTools.assertSuccessWithContent(response, "liked tracks response");
+      return JsonBrowser.parse(response.getEntity().getContent());
+    }
+  }
 
 	private AudioItem extractTracksFromLikedList(JsonBrowser likedTracks, UserInfo userInfo, String likedListUrl) {
 		List<AudioTrack> tracks = new ArrayList<>();
 
-		for (JsonBrowser item : likedTracks.get("collection").values()) {
-			JsonBrowser trackItem = item.get("track");
+    for (JsonBrowser item : likedTracks.get("collection").values()) {
+      JsonBrowser trackItem = item.get("track");
 
-			if (!trackItem.isNull() && !dataReader.isTrackBlocked(trackItem)) {
-				tracks.add(loadFromTrackData(trackItem));
-			}
-		}
+      if (!trackItem.isNull() && !dataReader.isTrackBlocked(trackItem)) {
+        tracks.add(loadFromTrackData(trackItem));
+      }
+    }
 
-		return new BasicAudioPlaylist("Liked by " + userInfo.name, tracks, null, false, likedListUrl);
-	}
+    return new BasicAudioPlaylist("Liked by " + userInfo.name, tracks, null, false, likedListUrl);
+  }
 
-	private AudioItem processAsSearchQuery(AudioReference reference) {
-		if (reference.identifier.startsWith(SEARCH_PREFIX)) {
-			if (reference.identifier.startsWith(SEARCH_PREFIX_DEFAULT)) {
-				return loadSearchResult(reference.identifier.substring(SEARCH_PREFIX_DEFAULT.length()).trim(), 0, DEFAULT_SEARCH_RESULTS);
-			}
+  private static class UserInfo {
+    private final String id;
+    private final String name;
 
-			Matcher searchMatcher = searchPattern.matcher(reference.identifier);
+    private UserInfo(String id, String name) {
+      this.id = id;
+      this.name = name;
+    }
+  }
 
-			if (searchMatcher.matches()) {
-				return loadSearchResult(searchMatcher.group(3), Integer.parseInt(searchMatcher.group(1)), Integer.parseInt(searchMatcher.group(2)));
-			}
-		}
+  private AudioItem processAsSearchQuery(AudioReference reference) {
+    if (reference.identifier.startsWith(SEARCH_PREFIX)) {
+      if (reference.identifier.startsWith(SEARCH_PREFIX_DEFAULT)) {
+        return loadSearchResult(reference.identifier.substring(SEARCH_PREFIX_DEFAULT.length()).trim(), 0, DEFAULT_SEARCH_RESULTS);
+      }
 
-		return null;
-	}
+      Matcher searchMatcher = searchPattern.matcher(reference.identifier);
 
-	private AudioItem loadSearchResult(String query, int offset, int rawLimit) {
-		int limit = Math.min(rawLimit, MAXIMUM_SEARCH_RESULTS);
+      if (searchMatcher.matches()) {
+        return loadSearchResult(searchMatcher.group(3), Integer.parseInt(searchMatcher.group(1)), Integer.parseInt(searchMatcher.group(2)));
+      }
+    }
 
-		try (
-				HttpInterface httpInterface = getHttpInterface();
-				CloseableHttpResponse response = httpInterface.execute(new HttpGet(buildSearchUri(query, offset, limit)))
-		) {
-			return loadSearchResultsFromResponse(response, query);
-		} catch (IOException e) {
-			throw new FriendlyException("Loading search results from SoundCloud failed.", SUSPICIOUS, e);
-		}
-	}
+    return null;
+  }
 
-	private AudioItem loadSearchResultsFromResponse(HttpResponse response, String query) throws IOException {
-		try {
-			JsonBrowser searchResults = JsonBrowser.parse(response.getEntity().getContent());
-			return extractTracksFromSearchResults(query, searchResults);
-		} finally {
-			EntityUtils.consumeQuietly(response.getEntity());
-		}
-	}
+  private AudioItem loadSearchResult(String query, int offset, int rawLimit) {
+    int limit = Math.min(rawLimit, MAXIMUM_SEARCH_RESULTS);
 
-	private URI buildSearchUri(String query, int offset, int limit) {
-		try {
-			return new URIBuilder("https://api-v2.soundcloud.com/search/tracks")
-					.addParameter("q", query)
-					.addParameter("offset", String.valueOf(offset))
-					.addParameter("limit", String.valueOf(limit))
-					.build();
-		} catch (URISyntaxException e) {
-			throw new RuntimeException(e);
-		}
-	}
+    try (
+        HttpInterface httpInterface = getHttpInterface();
+        CloseableHttpResponse response = httpInterface.execute(new HttpGet(buildSearchUri(query, offset, limit)))
+    ) {
+      return loadSearchResultsFromResponse(response, query);
+    } catch (IOException e) {
+      throw new FriendlyException("Loading search results from SoundCloud failed.", SUSPICIOUS, e);
+    }
+  }
 
-	private AudioItem extractTracksFromSearchResults(String query, JsonBrowser searchResults) {
-		List<AudioTrack> tracks = new ArrayList<>();
+  private AudioItem loadSearchResultsFromResponse(HttpResponse response, String query) throws IOException {
+    try {
+      JsonBrowser searchResults = JsonBrowser.parse(response.getEntity().getContent());
+      return extractTracksFromSearchResults(query, searchResults);
+    } finally {
+      EntityUtils.consumeQuietly(response.getEntity());
+    }
+  }
 
-		for (JsonBrowser item : searchResults.get("collection").values()) {
-			if (!item.isNull()) {
-				tracks.add(loadFromTrackData(item));
-			}
-		}
+  private URI buildSearchUri(String query, int offset, int limit) {
+    try {
+      return new URIBuilder("https://api-v2.soundcloud.com/search/tracks")
+          .addParameter("q", query)
+          .addParameter("offset", String.valueOf(offset))
+          .addParameter("limit", String.valueOf(limit))
+          .build();
+    } catch (URISyntaxException e) {
+      throw new RuntimeException(e);
+    }
+  }
 
-		return new BasicAudioPlaylist("Search results for: " + query, tracks, null, true, query);
-	}
+  private AudioItem extractTracksFromSearchResults(String query, JsonBrowser searchResults) {
+    List<AudioTrack> tracks = new ArrayList<>();
 
-	private static class UserInfo {
-		private final String id;
-		private final String name;
+    for (JsonBrowser item : searchResults.get("collection").values()) {
+      if (!item.isNull()) {
+        tracks.add(loadFromTrackData(item));
+      }
+    }
 
-		private UserInfo(String id, String name) {
-			this.id = id;
-			this.name = name;
-		}
-	}
+    return new BasicAudioPlaylist("Search results for: " + query, tracks, null, true, query);
+  }
 
-	public static class Builder {
-		private boolean allowSearch = true;
-		private SoundCloudDataReader dataReader;
-		private SoundCloudDataLoader dataLoader;
-		private SoundCloudFormatHandler formatHandler;
-		private SoundCloudPlaylistLoader playlistLoader;
-		private PlaylistLoaderFactory playlistLoaderFactory;
+  public static class Builder {
+    private boolean allowSearch = true;
+    private SoundCloudDataReader dataReader;
+    private SoundCloudDataLoader dataLoader;
+    private SoundCloudFormatHandler formatHandler;
+    private SoundCloudPlaylistLoader playlistLoader;
+    private PlaylistLoaderFactory playlistLoaderFactory;
 
-		public Builder withAllowSearch(boolean allowSearch) {
-			this.allowSearch = allowSearch;
-			return this;
-		}
+    public Builder withAllowSearch(boolean allowSearch) {
+      this.allowSearch = allowSearch;
+      return this;
+    }
 
-		public Builder withDataReader(SoundCloudDataReader dataReader) {
-			this.dataReader = dataReader;
-			return this;
-		}
+    public Builder withDataReader(SoundCloudDataReader dataReader) {
+      this.dataReader = dataReader;
+      return this;
+    }
 
-		public Builder withDataLoader(SoundCloudDataLoader dataLoader) {
-			this.dataLoader = dataLoader;
-			return this;
-		}
+    public Builder withDataLoader(SoundCloudDataLoader dataLoader) {
+      this.dataLoader = dataLoader;
+      return this;
+    }
 
-		public Builder withFormatHandler(SoundCloudFormatHandler formatHandler) {
-			this.formatHandler = formatHandler;
-			return this;
-		}
+    public Builder withFormatHandler(SoundCloudFormatHandler formatHandler) {
+      this.formatHandler = formatHandler;
+      return this;
+    }
 
-		public Builder withPlaylistLoader(SoundCloudPlaylistLoader playlistLoader) {
-			this.playlistLoader = playlistLoader;
-			return this;
-		}
+    public Builder withPlaylistLoader(SoundCloudPlaylistLoader playlistLoader) {
+      this.playlistLoader = playlistLoader;
+      return this;
+    }
 
-		public Builder withPlaylistLoaderFactory(PlaylistLoaderFactory playlistLoaderFactory) {
-			this.playlistLoaderFactory = playlistLoaderFactory;
-			return this;
-		}
+    public Builder withPlaylistLoaderFactory(PlaylistLoaderFactory playlistLoaderFactory) {
+      this.playlistLoaderFactory = playlistLoaderFactory;
+      return this;
+    }
 
-		public SoundCloudAudioSourceManager build() {
-			SoundCloudDataReader usedDataReader = dataReader;
+    public SoundCloudAudioSourceManager build() {
+      SoundCloudDataReader usedDataReader = dataReader;
 
-			if (usedDataReader == null) {
-				usedDataReader = new DefaultSoundCloudDataReader();
-			}
+      if (usedDataReader == null) {
+        usedDataReader = new DefaultSoundCloudDataReader();
+      }
 
-			SoundCloudDataLoader usedDataLoader = dataLoader;
+      SoundCloudDataLoader usedDataLoader = dataLoader;
 
-			if (usedDataLoader == null) {
-				usedDataLoader = new DefaultSoundCloudDataLoader();
-			}
+      if (usedDataLoader == null) {
+        usedDataLoader = new DefaultSoundCloudDataLoader();
+      }
 
-			SoundCloudFormatHandler usedFormatHandler = formatHandler;
+      SoundCloudFormatHandler usedFormatHandler = formatHandler;
 
-			if (usedFormatHandler == null) {
-				usedFormatHandler = new DefaultSoundCloudFormatHandler();
-			}
+      if (usedFormatHandler == null) {
+        usedFormatHandler = new DefaultSoundCloudFormatHandler();
+      }
 
-			SoundCloudPlaylistLoader usedPlaylistLoader = playlistLoader;
+      SoundCloudPlaylistLoader usedPlaylistLoader = playlistLoader;
 
-			if (usedPlaylistLoader == null) {
-				PlaylistLoaderFactory factory = playlistLoaderFactory;
+      if (usedPlaylistLoader == null) {
+        PlaylistLoaderFactory factory = playlistLoaderFactory;
 
-				if (factory != null) {
-					usedPlaylistLoader = factory.create(usedDataReader, usedDataLoader, usedFormatHandler);
-				}
-			}
+        if (factory != null) {
+          usedPlaylistLoader = factory.create(usedDataReader, usedDataLoader, usedFormatHandler);
+        }
+      }
 
-			if (usedPlaylistLoader == null) {
-				usedPlaylistLoader = new DefaultSoundCloudPlaylistLoader(usedDataLoader, usedDataReader, usedFormatHandler);
-			}
+      if (usedPlaylistLoader == null) {
+        usedPlaylistLoader = new DefaultSoundCloudPlaylistLoader(usedDataLoader, usedDataReader, usedFormatHandler);
+      }
 
-			return new SoundCloudAudioSourceManager(
-					allowSearch,
-					usedDataReader,
-					usedDataLoader,
-					usedFormatHandler,
-					usedPlaylistLoader
-			);
-		}
+      return new SoundCloudAudioSourceManager(
+          allowSearch,
+          usedDataReader,
+          usedDataLoader,
+          usedFormatHandler,
+          usedPlaylistLoader
+      );
+    }
 
-		@FunctionalInterface
-		interface PlaylistLoaderFactory {
-			SoundCloudPlaylistLoader create(
-					SoundCloudDataReader dataReader,
-					SoundCloudDataLoader dataLoader,
-					SoundCloudFormatHandler formatHandler
-			);
-		}
-	}
+    @FunctionalInterface
+    interface PlaylistLoaderFactory {
+      SoundCloudPlaylistLoader create(
+          SoundCloudDataReader dataReader,
+          SoundCloudDataLoader dataLoader,
+          SoundCloudFormatHandler formatHandler
+      );
+    }
+  }
 }

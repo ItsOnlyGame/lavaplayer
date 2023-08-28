@@ -20,19 +20,12 @@ public class LocalPlayerDemo {
 		AudioPlayerManager manager = new DefaultAudioPlayerManager();
 		AudioSourceManagers.registerRemoteSources(manager);
 
-
-		String clientId = System.getenv("SpotifyClient");
-		String clientSecret = System.getenv("SpotifySecret");
-		SpotifyAudioSourceManager spotifyAudioSourceManager = new SpotifyAudioSourceManager(clientId, clientSecret, CountryCode.FI);
-
-		manager.registerSourceManager(spotifyAudioSourceManager);
-
 		manager.getConfiguration().setOutputFormat(COMMON_PCM_S16_BE);
 
 		AudioPlayer player = manager.createPlayer();
 		player.setVolume(50);
 
-		manager.loadItem("spsearch: Ambulance June", new FunctionalResultHandler(null, playlist -> {
+		manager.loadItem("ytsearch: Ambulance June", new FunctionalResultHandler(null, playlist -> {
 			player.playTrack(playlist.getTracks().get(0));
 		}, null, null));
 
